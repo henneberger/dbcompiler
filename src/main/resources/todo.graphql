@@ -1,0 +1,46 @@
+type User {
+  user_id: ID
+  username: String
+  todos: [Todo] @inverse(field: "user")
+}
+
+type Todo {
+  todo_id: ID
+  title: String @mutable
+  status: boolean @mutable
+  user: User! @inverse(field: "todos")
+}
+
+type Query {
+  todosByUser: [Todo] @sql(where: user.user_id = $user_id)
+}
+
+query GetTodosByUser($user_id: ID) {
+  todos: todosByUser(user_id: $user_id) {
+    title
+    status
+    user {
+      user_id
+    }
+  }
+}
+
+fragment CreateUser on User
+    @insert {
+  username
+}
+
+fragment AddTodo on Todo
+    @insert {
+  title
+  completed
+  user {
+    user_id
+  }
+}
+
+fragment UpdateTodo on Todo
+    @update(from: "todo_id = $todo_id") {
+  title
+  status
+}
