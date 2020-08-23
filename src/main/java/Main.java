@@ -11,7 +11,8 @@ public class Main {
         DomainModel model = main.parse(Resources.toString(
                 Resources.getResource("todo.graphql"),
                     Charset.defaultCharset()));
-        System.out.println(model);
+
+        new LogicalPlan(model).search();
 
     }
 

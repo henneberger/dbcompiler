@@ -9,6 +9,18 @@ public class QueryDefinition {
         this.sqlClause = sqlClause;
     }
 
+    public String getName() {
+        return name;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public SqlClause getSqlClause() {
+        return sqlClause;
+    }
+
     @Override
     public String toString() {
         return "QueryDefinition{" +

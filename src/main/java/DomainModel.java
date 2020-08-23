@@ -1,11 +1,14 @@
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class DomainModel {
-    private List<Entity> entities = new ArrayList<>();
-    private List<QueryDefinition> queryDefinitions = new ArrayList<>();
-    private List<Query> queries = new ArrayList<>();
-    private List<Mutation> mutations = new ArrayList<>();
+    protected List<Entity> entities = new ArrayList<>();
+    protected List<QueryDefinition> queryDefinitions = new ArrayList<>();
+    protected Map<String, QueryDefinition> queryDefinitionMap = new HashMap<>();
+    protected List<Query> queries = new ArrayList<>();
+    protected List<Mutation> mutations = new ArrayList<>();
 
     public void add(Entity entity) {
         entities.add(entity);
@@ -13,6 +16,7 @@ public class DomainModel {
 
     public void add(QueryDefinition queryDefinition) {
         this.queryDefinitions.add(queryDefinition);
+        this.queryDefinitionMap.put(queryDefinition.getName(), queryDefinition);
     }
 
     public void add(Query query) {
@@ -30,5 +34,77 @@ public class DomainModel {
                 ", queries=" + queries +
                 ", mutations=" + mutations +
                 '}';
+    }
+
+    public class Query extends QueryRelation {
+
+        public Query(String name, DomainModel.QuerySelectionSet selection) {
+            super(name, selection);
+        }
+    }
+
+    public class QuerySelectionSet {
+        private final String name;
+        private final List<QuerySelection> selections;
+
+        public QuerySelectionSet(String name, List<QuerySelection> selections) {
+            this.name = name;
+            this.selections = selections;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public List<QuerySelection> getSelections() {
+            return selections;
+        }
+
+        @Override
+        public String toString() {
+            return "QuerySelectionSet{" +
+                    "name=" + name +
+                    ", selections=" + selections +
+                    '}';
+        }
+    }
+
+    public class QuerySelection {
+        protected final String name;
+
+        public QuerySelection(String name) {
+            this.name = name;
+        }
+
+        public QueryDefinition getDefinition() {
+            return queryDefinitionMap.get(name);
+        }
+        @Override
+        public String toString() {
+            return "QuerySelection{" +
+                    "name='" + name + '\'' +
+                    '}';
+        }
+    }
+
+
+    public class QueryRelation extends QuerySelection {
+        private DomainModel.QuerySelectionSet querySelectionSet;
+
+        public QueryRelation(String name, DomainModel.QuerySelectionSet selection) {
+            super(name);
+            querySelectionSet = selection;
+        }
+
+        public DomainModel.QuerySelectionSet getQuerySelectionSet() {
+            return querySelectionSet;
+        }
+
+        @Override
+        public String toString() {
+            return "QueryRelation{" +
+                    "querySelectionSet=" + querySelectionSet +
+                    '}';
+        }
     }
 }

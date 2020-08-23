@@ -18,10 +18,10 @@ public class GraphQLVisitorImpl extends GraphQLBaseVisitor {
         Object ex = super.visitExecutableDefinition(ctx);
         if (ex instanceof Mutation) {
             model.add((Mutation)ex);
-        } else if (ex instanceof Query) {
-            model.add((Query) ex);
-        } else if (ex instanceof QueryDefinition) {
-            model.add((QueryDefinition) ex);
+        } else if (ex instanceof DomainModel.Query) {
+            model.add((DomainModel.Query) ex);
+//        } else if (ex instanceof QueryDefinition) {
+//            model.add((QueryDefinition) ex);
         } else if (ex instanceof Entity) {
             model.add((Entity) ex);
         }
@@ -50,10 +50,12 @@ public class GraphQLVisitorImpl extends GraphQLBaseVisitor {
 
     @Override
     public Object visitQueryRootDefinition(GraphQLParser.QueryRootDefinitionContext ctx) {
-        return new QueryDefinition(
+        QueryDefinition queryDefinition = new QueryDefinition(
                 ctx.name().getText(),
                 ctx.type_().getText(),
                 visitSqlDirective(ctx.sqlDirective()));
+        model.add(queryDefinition);
+        return queryDefinition;
     }
 
     @Override
@@ -67,12 +69,12 @@ public class GraphQLVisitorImpl extends GraphQLBaseVisitor {
     }
 
 
-    private Query visitQuery(GraphQLParser.OperationDefinitionContext ctx) {
-        return new Query(ctx.name().getText(), visitSelectionSet(ctx.selectionSet()));
+    private DomainModel.Query visitQuery(GraphQLParser.OperationDefinitionContext ctx) {
+        return model.new Query(ctx.name().getText(), visitSelectionSet(ctx.selectionSet()));
     }
 
     @Override
-    public QuerySelectionSet visitSelectionSet(GraphQLParser.SelectionSetContext ctx) {
+    public DomainModel.QuerySelectionSet visitSelectionSet(GraphQLParser.SelectionSetContext ctx) {
         String name = null;
         if (ctx.parent instanceof GraphQLParser.OperationDefinitionContext) {
             name = ((GraphQLParser.OperationDefinitionContext) ctx.parent).name().getText();
@@ -80,18 +82,18 @@ public class GraphQLVisitorImpl extends GraphQLBaseVisitor {
             name = ((GraphQLParser.FieldContext) ctx.parent).name().getText();
         }
 
-        List<QuerySelection> selections = ctx.selection().stream()
+        List<DomainModel.QuerySelection> selections = ctx.selection().stream()
                 .map(sel-> visitSelection(sel))
                 .collect(Collectors.toList());
-        return new QuerySelectionSet(name, selections);
+        return model.new QuerySelectionSet(name, selections);
     }
 
     @Override
-    public QuerySelection visitSelection(GraphQLParser.SelectionContext ctx) {
+    public DomainModel.QuerySelection visitSelection(GraphQLParser.SelectionContext ctx) {
         if (containsChildSelectionSet(ctx)) {
-            return new QueryRelation(ctx.field().name().getText(), visitSelectionSet(ctx.field().selectionSet()));
+            return model.new QueryRelation(ctx.field().name().getText(), visitSelectionSet(ctx.field().selectionSet()));
         }
-        return new QuerySelection(ctx.field().name().getText());
+        return model.new QuerySelection(ctx.field().name().getText());
     }
 
     @Override

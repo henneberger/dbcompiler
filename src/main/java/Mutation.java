@@ -1,4 +1,4 @@
-public class Mutation extends ModelObject {
+public class Mutation {
     private String name;
 
     public Mutation(String name) {

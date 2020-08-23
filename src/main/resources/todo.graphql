@@ -2,6 +2,14 @@ type User {
   user_id: ID
   username: String
   todos: [Todo] @inverse(field: "user")
+  seen_history: [History]
+}
+
+type History {
+  todo_id: ID
+  seen: DateTime
+  ##recently_seen(seen: $seen) @computed(with: "max($seen)")
+  user: User! @inverse(field: "seen_history")
 }
 
 type Todo {
@@ -12,18 +20,53 @@ type Todo {
 }
 
 type Query {
-  todosByUser: [Todo] @sql(where: user.user_id = $user_id)
+  todosByUser: [Todo] @sql(where: user.username = $username)
+  todosByTitle: [Todo] @sql(where: user.username = $username AND title = $title)
+  user: [User] @sql(where: user_id = $user_id)
+  ## recentlySeen: [History] @sql(where: seen > $seen)
 }
 
-query GetTodosByUser($user_id: ID) {
-  todos: todosByUser(user_id: $user_id) {
+##query GetMostRecentlySeen($seen: DateTime) {
+##  recently_seen(seen: $seen) {
+##    user {
+##      user_id
+##    }
+##  }
+##}
+
+query GetTodosByUser($username: String) {
+  todosByUser(user_id: $user_id) {
     title
     status
     user {
       user_id
     }
   }
+    todosByTitle(user_id: $username) {
+      title
+      status
+      user {
+        user_id
+      }
+    }
+
+    user(user_id: $username) {
+      title
+      status
+      user {
+        user_id
+      }
+    }
 }
+
+fragment UpdateSeen on History
+    @insert {
+  seen
+  user {
+    user_id
+  }
+}
+
 
 fragment CreateUser on User
     @insert {
