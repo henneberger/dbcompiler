@@ -102,23 +102,10 @@ public class SqlClause {
 
         public MPVariable getOrCreateVarForIndex(MPSolver solver) {
             if (this.var == null) {
-                var = solver.makeNumVar(0.0, Optimizer.infinity, merkle.toString());
+//                var = solver.makeIntVar(0, 1,  UUID.randomUUID().toString().substring(0, 4));
+                var = solver.makeBoolVar("i"+UUID.randomUUID().toString().substring(0, 4));
             }
             return var;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            Index index = (Index) o;
-            return Objects.equals(merkle, index.merkle);
-        }
-
-        @Override
-        public int hashCode() {
-
-            return Objects.hash(merkle);
         }
     }
 

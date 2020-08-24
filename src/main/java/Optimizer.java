@@ -2,6 +2,7 @@ import com.google.ortools.linearsolver.MPConstraint;
 import com.google.ortools.linearsolver.MPObjective;
 import com.google.ortools.linearsolver.MPSolver;
 import com.google.ortools.linearsolver.MPVariable;
+import com.google.ortools.sat.CpSolver;
 
 import java.util.List;
 import java.util.Map;
@@ -26,7 +27,7 @@ public class Optimizer {
 
     //1 <= x1 + x2 <= inf
     public void optimize() {
-        MPSolver solver = MPSolver.createSolver("Optimizer", "GLOP");
+        MPSolver solver = MPSolver.createSolver("Optimizer", "CBC");
 
         /*
          * Generate index variables: x1, x2, x3, ...
@@ -47,7 +48,7 @@ public class Optimizer {
                  */
                 UniqueIndex uniqueIndex = uniqueIndexMap.get(index);
                 MPVariable queryIndexVariable = uniqueIndex.getOrCreateVarForIndex(solver);
-                MPConstraint constraint = solver.makeConstraint(-infinity, 0);
+                MPConstraint constraint = solver.makeConstraint(0, infinity);
                 constraint.setCoefficient(queryIndexVariable, 1);
                 MPVariable indexVariable = index.getOrCreateVarForIndex(solver);
                 constraint.setCoefficient(indexVariable, -1);
@@ -106,7 +107,7 @@ public class Optimizer {
          * prev_solution <= freq * cost * x1q1, ...
          */
 
-        MPConstraint optimal = solver.makeConstraint(-infinity, solver.objective().value(), "total_cost");
+        MPConstraint optimal = solver.makeConstraint(0, solver.objective().value()+500, "total_cost");
         for (SqlClause.Index index : allIndices) {
             MPVariable queryIndexVariable = index.getOrCreateVarForIndex(solver);
 
@@ -130,10 +131,8 @@ public class Optimizer {
     }
 
     class PlanPathVisitor implements PlanVisitor {
-        private SqlClause clause;
         private MPSolver solver;
         public PlanPathVisitor(SqlClause clause, MPSolver solver) {
-            this.clause = clause;
 
             this.solver = solver;
         }
@@ -158,7 +157,7 @@ public class Optimizer {
         final MPSolver.ResultStatus resultStatus = solver.solve();
 
         // Check that the problem has an optimal solution.
-        if (resultStatus != MPSolver.ResultStatus.OPTIMAL) {
+        if (resultStatus == MPSolver.ResultStatus.INFEASIBLE) {
             System.err.println("The problem does not have an optimal solution!");
             return;
         }
@@ -176,6 +175,9 @@ public class Optimizer {
         // The objective value of the solution.
         System.out.println("Optimal objective value = " + solver.objective().value());
 
+        for (SqlClause.Index index : allIndices) {
+            System.out.println(index.toString() + " = " + index.getOrCreateVarForIndex(solver).solutionValue());
+        }
         for (UniqueIndex index : uniqueIndices) {
             System.out.println(index.toString() + " = " + index.getOrCreateVarForIndex(solver).solutionValue());
         }
