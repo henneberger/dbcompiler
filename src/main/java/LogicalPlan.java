@@ -1,8 +1,5 @@
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class LogicalPlan {
     private final DomainModel model;
@@ -11,18 +8,35 @@ public class LogicalPlan {
         this.model = model;
     }
 
-    public List<SqlClause.Plan> search() {
+    public List<SqlClause.Index> search() {
         List<DomainModel.QuerySelection> rootSelections = expandClauses(model.queries);
 
-        Set<SqlClause.Plan> allPlans = new HashSet<>();
+        List<SqlClause.Index> allIndices = new ArrayList<>();
+        Set<Set<String>> merkle = new HashSet<>();
         for (DomainModel.QuerySelection selection : rootSelections) {
             SqlClause clause = selection.getDefinition().getSqlClause();
-            allPlans.addAll(clause.permute());
+            for (SqlClause.Index index : clause.permute()) {
+                merkle.add(index.getMerkle());
+                allIndices.add(index);
+            }
         }
 
-        System.out.println(allPlans);
+        Set<UniqueIndex> uniqueIndices = new HashSet<>();
+        Map<Set<String>, UniqueIndex> uniqueSetMap = new HashMap<>();
+        Map<SqlClause.Index, UniqueIndex> uniqueIndexMap = new HashMap<>();
 
-        new Optimizer(allPlans, rootSelections).optimize();
+        for (SqlClause.Index index : allIndices) {
+            UniqueIndex uniqueIndex;
+            if ((uniqueIndex = uniqueSetMap.get(index.getMerkle())) == null) {
+                uniqueIndex = new UniqueIndex(index.getMerkle());
+                uniqueSetMap.put(index.getMerkle(), uniqueIndex);
+                uniqueIndices.add(uniqueIndex);
+            }
+
+            uniqueIndexMap.put(index, uniqueIndex);
+        }
+
+        new Optimizer(uniqueIndices, uniqueIndexMap, allIndices, rootSelections).optimize();
 
         return null;
 

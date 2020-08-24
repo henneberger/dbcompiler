@@ -36,6 +36,15 @@ public class DomainModel {
                 '}';
     }
 
+    public Entity getEntity(String entity_name) {
+        for (Entity entity : entities) {
+            if (entity.getName().equals(entity_name)){
+                return entity;
+            }
+        }
+        return null;
+    }
+
     public class Query extends QueryRelation {
 
         public Query(String name, DomainModel.QuerySelectionSet selection) {

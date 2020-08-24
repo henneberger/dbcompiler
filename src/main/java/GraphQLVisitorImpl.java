@@ -35,17 +35,17 @@ public class GraphQLVisitorImpl extends GraphQLBaseVisitor {
 
     @Override
     public Object visitObjectTypeDefinition(GraphQLParser.ObjectTypeDefinitionContext ctx) {
-        List<Field> fields = ctx.fieldsDefinition().fieldDefinition()
+        Entity entity = new Entity(ctx.name().getText());
+        List<Entity.Field> fields = ctx.fieldsDefinition().fieldDefinition()
                 .stream()
-                .map(this::visitFieldDefinition)
+                .map(f -> visitFieldDefinition(f, entity))
                 .collect(Collectors.toList());
-
-        return new Entity(ctx.name().getText(), fields);
+        entity.setFields(fields);
+        return entity;
     }
 
-    @Override
-    public Field visitFieldDefinition(GraphQLParser.FieldDefinitionContext ctx) {
-        return new Field(ctx.name().getText(), ctx.type_().getText());
+    public Entity.Field visitFieldDefinition(GraphQLParser.FieldDefinitionContext ctx, Entity entity) {
+        return entity.new Field(ctx.name().getText(), ctx.type_().getText());
     }
 
     @Override
