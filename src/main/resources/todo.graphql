@@ -18,8 +18,10 @@ type Todo
   todo_id: ID
   title: String
     @mutable
-    @selectivity(max: 90000, distribution: "zipf")
-  status: boolean @mutable
+    @selectivity(max: 1000, distribution: "zipf")
+  status: boolean
+    @mutable
+    @selectivity(max: 50000, distribution: "zipf")
   user: User! @inverse(field: "todos")
 }
 
@@ -31,6 +33,7 @@ type Query
   todosById: Todo @sql(where: todo_id = $todo_id)
   todosByUser: [Todo] @sql(where: user.username = $username)
   todosByTitle: [Todo] @sql(where: user.username = $username AND title = $title)
+  todosByCompleted: [Todo] @sql(where: user.username = $username AND status = $status) #Assure we can do a partition scan easily
   user: [User] @sql(where: user_id = $user_id)
 }
 
@@ -46,6 +49,9 @@ query GetTodosById($todo_id: ID)
     user {
       user_id
     }
+  }
+  todosByCompleted(status: $status) {
+    title
   }
 }
 query GetTodosByUser($username: String)

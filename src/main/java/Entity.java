@@ -4,6 +4,7 @@ import com.google.common.collect.Maps;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class Entity {
     private final String name;
@@ -24,16 +25,8 @@ public class Entity {
                 '}';
     }
 
-    public int estimateCost(String... field) {
-        if (field.length == 0) {
-            return getMaxCount();
-        }
-
-        return getField(field[0]).getSelectivity();
-    }
-
-    private int getMaxCount() {
-        return (int)directives.get("size").get("max");
+    public int getMaxCount() {
+        return Integer.parseInt(directives.get("size").get("max").toString());
     }
 
     public String getName() {
@@ -49,6 +42,18 @@ public class Entity {
         Field f = fieldMap.get(field);
         Preconditions.checkNotNull(f, "Cannot find field in entity {}", field);
         return f;
+    }
+
+    public double estimatePartitionSize(Set<String> merkle) {
+        String field = merkle.iterator().next();
+
+        if (field.contains(".")) {
+            return 1;
+        }
+
+        Field f = fieldMap.get(field);
+        Preconditions.checkNotNull(f, "Field is missing: {}", field);
+        return f.getSelectivity();
     }
 
     public class Field {
@@ -87,7 +92,7 @@ public class Entity {
         }
 
         public int getSelectivity() {
-            return 0;
+            return Integer.parseInt(directives.get("selectivity").get("max").toString());
         }
     }
 }

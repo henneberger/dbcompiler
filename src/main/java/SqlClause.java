@@ -1,21 +1,15 @@
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
-import com.google.ortools.linearsolver.MPSolver;
-import com.google.ortools.linearsolver.MPVariable;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class SqlClause {
     private final Entity rootEntity;
-    private final DomainModel model;
-    private Plan plan;
     private List<Conjunction> conjunctions;
     private List<Index> indices;
-    double partitionScanCost = 0.1;
 
     public SqlClause(Entity rootEntity, DomainModel model) {
-        this.model = model;
         this.indices = new ArrayList<>();
         this.rootEntity = rootEntity;
     }
@@ -84,8 +78,8 @@ public class SqlClause {
         public final Set<String> merkle;
         private final Set<String> bTree;
         private final Set<String> remaining;
-        private MPVariable var;
         private SqlClause clause = getSqlClause();
+        private static final double row_scan_cost = 1.005;
 
         public Index(DomainModel.Query query, Set<String> merkle, Set<String> bTree, Set<String> remaining) {
             this.query = query;
@@ -130,15 +124,12 @@ public class SqlClause {
         }
 
         public double getScanCost() {
-            return 1.05;
-        }
-
-        public MPVariable getOrCreateVarForIndex(MPSolver solver) {
-            if (this.var == null) {
-//                var = solver.makeIntVar(0, 1,  UUID.randomUUID().toString().substring(0, 4));
-                var = solver.makeBoolVar("i"+UUID.randomUUID().toString().substring(0, 4));
+            if (merkle.isEmpty()) {
+                //Scan cost is likelihood we'll find (remaining) scalars.
+                //e.g. a boolean can be found quickly
+                return rootEntity.getMaxCount() * row_scan_cost;
             }
-            return var;
+            return rootEntity.estimatePartitionSize(merkle) * row_scan_cost;
         }
 
         public int getQueryFrequency() {

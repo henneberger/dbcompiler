@@ -3,9 +3,7 @@ import com.google.ortools.linearsolver.MPObjective;
 import com.google.ortools.linearsolver.MPSolver;
 import com.google.ortools.linearsolver.MPVariable;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class Optimizer {
     static {
@@ -18,6 +16,8 @@ public class Optimizer {
     private final Set<UniqueIndex> uniqueIndices;
     private final Map<SqlClause.Index, UniqueIndex> uniqueIndexMap;
     private double optimal_solution_margin = 1.1; //10%
+    private Map<UniqueIndex, MPVariable> uniqueIndexVarMap = new HashMap<>();
+    private Map<SqlClause.Index, MPVariable> indexVarMap = new HashMap<>();
 
     public Optimizer(Set<UniqueIndex> uniqueIndices, Map<SqlClause.Index, UniqueIndex> uniqueIndexMap, List<SqlClause.Index> allIndices, Set<DomainModel.QuerySelection> rootSelections, List<Plan> allPlans) {
         this.uniqueIndices = uniqueIndices;
@@ -35,7 +35,9 @@ public class Optimizer {
          * Generate index variables: x1, x2, x3, ...
          */
         for (UniqueIndex index : uniqueIndices) {
-            index.getOrCreateVarForIndex(solver);
+//            index.getOrCreateVarForIndex(solver);
+            MPVariable variable = solver.makeBoolVar("u"+UUID.randomUUID().toString().substring(0, 4));
+            uniqueIndexVarMap.put(index, variable);
         }
 
         /*
@@ -49,10 +51,12 @@ public class Optimizer {
                  * Assign index & index+query constraints: x1q1 <= x1, x2q1 <= x2, ...
                  */
                 UniqueIndex uniqueIndex = uniqueIndexMap.get(index);
-                MPVariable queryIndexVariable = uniqueIndex.getOrCreateVarForIndex(solver);
+                MPVariable queryIndexVariable = uniqueIndexVarMap.get(uniqueIndex);
                 MPConstraint constraint = solver.makeConstraint(0, infinity);
                 constraint.setCoefficient(queryIndexVariable, 1);
-                MPVariable indexVariable = index.getOrCreateVarForIndex(solver);
+                MPVariable indexVariable = solver.makeBoolVar("i"+UUID.randomUUID().toString().substring(0, 4));
+                indexVarMap.put(index, indexVariable);
+
                 constraint.setCoefficient(indexVariable, -1);
             }
         }
@@ -82,7 +86,7 @@ public class Optimizer {
          */
         MPObjective objective = solver.objective();
         for (SqlClause.Index index : allIndices) {
-            MPVariable queryIndexVariable = index.getOrCreateVarForIndex(solver);
+            MPVariable queryIndexVariable = indexVarMap.get(index);
             objective.setCoefficient(queryIndexVariable,
                     index.getQueryFrequency() * index.getCost()
             );
@@ -109,7 +113,7 @@ public class Optimizer {
 
         MPConstraint optimal = solver.makeConstraint(0, solver.objective().value() * optimal_solution_margin, "total_cost");
         for (SqlClause.Index index : allIndices) {
-            MPVariable queryIndexVariable = index.getOrCreateVarForIndex(solver);
+            MPVariable queryIndexVariable = indexVarMap.get(index);
 
             optimal.setCoefficient(queryIndexVariable,
                     index.getQueryFrequency() * index.getCost()
@@ -122,7 +126,7 @@ public class Optimizer {
          * x1 + x2
          */
         for (UniqueIndex index : uniqueIndices) {
-            objective.setCoefficient(index.getOrCreateVarForIndex(solver), 1);
+            objective.setCoefficient(uniqueIndexVarMap.get(index), 1);
         }
         objective.setMinimization();
 
@@ -141,7 +145,7 @@ public class Optimizer {
             //1 <= x1q2 + x2q2 <= inf
             MPConstraint constraint = solver.makeConstraint(1, infinity);
             for (Plan child : plan.getChildren()) {
-                constraint.setCoefficient(child.getIndex().getOrCreateVarForIndex(solver), 1);
+                constraint.setCoefficient(indexVarMap.get(child.getIndex()), 1);
             }
         }
     }
@@ -175,10 +179,10 @@ public class Optimizer {
         System.out.println("Optimal objective value = " + solver.objective().value());
 
         for (SqlClause.Index index : allIndices) {
-            System.out.println(index.toString() + " = " + index.getOrCreateVarForIndex(solver).solutionValue());
+            System.out.println(index.toString() + " = " + indexVarMap.get(index).solutionValue() +"    " +index.getCost());
         }
         for (UniqueIndex index : uniqueIndices) {
-            System.out.println(index.toString() + " = " + index.getOrCreateVarForIndex(solver).solutionValue());
+            System.out.println(index.toString() + " = " + uniqueIndexVarMap.get(index).solutionValue());
         }
     }
 }
