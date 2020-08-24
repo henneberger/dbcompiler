@@ -50,6 +50,10 @@ public class DomainModel {
         public Query(String name, QuerySelectionSet selection, Map<String, Map<String, Object>> directive) {
             super(name, selection, directive);
         }
+
+        public int getFrequency() {
+            return Integer.parseInt((String)getDirectives().get("sla").get("throughput_per_second"));
+        }
     }
 
     public class QuerySelectionSet {

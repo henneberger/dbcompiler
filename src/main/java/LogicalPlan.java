@@ -9,14 +9,17 @@ public class LogicalPlan {
     }
 
     public List<SqlClause.Index> search() {
-        List<DomainModel.QuerySelection> rootSelections = expandClauses(model.queries);
+        Map<DomainModel.QuerySelection, DomainModel.Query> rootSelections = expandClauses(model.queries);
 
         List<SqlClause.Index> allIndices = new ArrayList<>();
         Set<Set<String>> merkle = new HashSet<>();
-        for (DomainModel.QuerySelection selection : rootSelections) {
-            SqlClause clause = selection.getDefinition().getSqlClause();
-            if (clause.getPlan() != null) continue;
-            for (SqlClause.Index index : clause.permute()) { //todo remove permute result
+        List<Plan> allPlans = new ArrayList<>();
+        for (Map.Entry<DomainModel.QuerySelection, DomainModel.Query> selection : rootSelections.entrySet()) {
+            SqlClause clause = selection.getKey().getDefinition().getSqlClause();
+            SqlClause.PermuteResult result = clause.permute(selection.getValue());
+            if (result.plan == null) continue;
+            allPlans.add(result.plan);
+            for (SqlClause.Index index : result.indices) { //todo remove permute result
                 merkle.add(index.getMerkle());
                 allIndices.add(index);
             }
@@ -37,19 +40,20 @@ public class LogicalPlan {
             uniqueIndexMap.put(index, uniqueIndex);
         }
 
-        new Optimizer(uniqueIndices, uniqueIndexMap, allIndices, rootSelections).optimize();
+        new Optimizer(uniqueIndices, uniqueIndexMap, allIndices, rootSelections.keySet(), allPlans).optimize();
 
         return null;
 
     }
 
-    private List<DomainModel.QuerySelection> expandClauses(List<DomainModel.Query> queries) {
-        List<DomainModel.QuerySelection> list = new ArrayList<>();
+    private Map<DomainModel.QuerySelection, DomainModel.Query> expandClauses(List<DomainModel.Query> queries) {
+        Map<DomainModel.QuerySelection, DomainModel.Query> map = new HashMap<>();
         for (DomainModel.Query q : queries) {
-            list.addAll(q.getQuerySelectionSet()
-                    .getSelections());
+            for (DomainModel.QuerySelection selection : q.getQuerySelectionSet().getSelections()) {
+                map.put(selection, q);
+            }
         }
 
-        return list;
+        return map;
     }
 }

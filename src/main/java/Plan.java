@@ -2,7 +2,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Plan {
-    //todo: Merging makes this index unhappy
     private final SqlClause.Index index;
     private final List<Plan> children = new ArrayList<>();
 
@@ -13,7 +12,6 @@ public class Plan {
     public Plan(SqlClause.Index index) {
         this.index = index;
     }
-
 
     public void visit(PlanVisitor pathVisitor) {
         pathVisitor.visit(this);

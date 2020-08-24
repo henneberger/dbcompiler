@@ -35,6 +35,11 @@ public class GraphQLVisitorImpl extends GraphQLBaseVisitor {
     }
 
     @Override
+    public Object visitQueryRootDefinitions(GraphQLParser.QueryRootDefinitionsContext ctx) {
+        return super.visitQueryRootDefinitions(ctx);
+    }
+
+    @Override
     public Object visitTypeDefinition(GraphQLParser.TypeDefinitionContext ctx) {
         return super.visitTypeDefinition(ctx);
     }
@@ -162,7 +167,7 @@ public class GraphQLVisitorImpl extends GraphQLBaseVisitor {
     }
 
     public SqlClause visitSqlDirective(GraphQLParser.SqlDirectiveContext ctx, Entity rootEntity) {
-        SqlClause sqlClause = new SqlClause(rootEntity);
+        SqlClause sqlClause = new SqlClause(rootEntity, model);
         List<Conjunction> conjunctionList = visitSqlBooleanExpression(ctx.expr, rootEntity);
         sqlClause.setConjunctions(conjunctionList);
         return sqlClause;

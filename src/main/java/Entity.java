@@ -1,4 +1,6 @@
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
 
 import java.util.List;
 import java.util.Map;
@@ -7,6 +9,7 @@ public class Entity {
     private final String name;
     private final Map<String, Map<String, Object>> directives;
     private List<Field> fields;
+    private ImmutableMap<String, Field> fieldMap;
 
     public Entity(String name, Map<String, Map<String, Object>> directives) {
         this.name = name;
@@ -21,22 +24,31 @@ public class Entity {
                 '}';
     }
 
+    public int estimateCost(String... field) {
+        if (field.length == 0) {
+            return getMaxCount();
+        }
+
+        return getField(field[0]).getSelectivity();
+    }
+
+    private int getMaxCount() {
+        return (int)directives.get("size").get("max");
+    }
+
     public String getName() {
         return name;
     }
 
     public void setFields(List<Field> fields) {
         this.fields = fields;
+        this.fieldMap = Maps.uniqueIndex(fields, f->f.name);
     }
 
     public Field getField(String field) {
-        for (Field field1 : fields) {
-            if (field1.getName().equals(field)) {
-                return field1;
-            }
-        }
-        Preconditions.checkNotNull(null, "Cannot find field in entity {}", field);
-        return null;
+        Field f = fieldMap.get(field);
+        Preconditions.checkNotNull(f, "Cannot find field in entity {}", field);
+        return f;
     }
 
     public class Field {
@@ -72,6 +84,10 @@ public class Entity {
 
         public boolean isGenId() {
             return type.equals("ID");
+        }
+
+        public int getSelectivity() {
+            return 0;
         }
     }
 }

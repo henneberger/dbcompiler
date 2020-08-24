@@ -13,15 +13,18 @@ public class Optimizer {
     }
     public static double infinity = java.lang.Double.POSITIVE_INFINITY;
     private final List<SqlClause.Index> allIndices;
-    private final List<DomainModel.QuerySelection> rootSelections;
+    private final Set<DomainModel.QuerySelection> rootSelections;
+    private final List<Plan> allPlans;
     private final Set<UniqueIndex> uniqueIndices;
     private final Map<SqlClause.Index, UniqueIndex> uniqueIndexMap;
+    private double optimal_solution_margin = 1.1; //10%
 
-    public Optimizer(Set<UniqueIndex> uniqueIndices, Map<SqlClause.Index, UniqueIndex> uniqueIndexMap, List<SqlClause.Index> allIndices, List<DomainModel.QuerySelection> rootSelections) {
+    public Optimizer(Set<UniqueIndex> uniqueIndices, Map<SqlClause.Index, UniqueIndex> uniqueIndexMap, List<SqlClause.Index> allIndices, Set<DomainModel.QuerySelection> rootSelections, List<Plan> allPlans) {
         this.uniqueIndices = uniqueIndices;
         this.uniqueIndexMap = uniqueIndexMap;
         this.allIndices = allIndices;
         this.rootSelections = rootSelections;
+        this.allPlans = allPlans;
     }
 
     //1 <= x1 + x2 <= inf
@@ -69,11 +72,8 @@ public class Optimizer {
          *   x1q1 + x2q1 >= 1, x2q1 <= x3q1
          *   x1q2 + x2q2 >= 1
          */
-        for (DomainModel.QuerySelection selection : rootSelections) {
-            SqlClause clause = selection.getDefinition().getSqlClause();
-            Plan plan = clause.getPlan();
-            if (plan == null) continue;
-            plan.visit(new PlanPathVisitor(clause, solver));
+        for (Plan plan : allPlans) {
+            plan.visit(new PlanPathVisitor(solver));
         }
 
         /*
@@ -84,7 +84,7 @@ public class Optimizer {
         for (SqlClause.Index index : allIndices) {
             MPVariable queryIndexVariable = index.getOrCreateVarForIndex(solver);
             objective.setCoefficient(queryIndexVariable,
-                    index.getClause().getFrequency() * index.getCost()
+                    index.getQueryFrequency() * index.getCost()
             );
         }
         objective.setMinimization();
@@ -107,12 +107,12 @@ public class Optimizer {
          * prev_solution <= freq * cost * x1q1, ...
          */
 
-        MPConstraint optimal = solver.makeConstraint(0, solver.objective().value()+500, "total_cost");
+        MPConstraint optimal = solver.makeConstraint(0, solver.objective().value() * optimal_solution_margin, "total_cost");
         for (SqlClause.Index index : allIndices) {
             MPVariable queryIndexVariable = index.getOrCreateVarForIndex(solver);
 
             optimal.setCoefficient(queryIndexVariable,
-                    index.getClause().getFrequency() * index.getCost()
+                    index.getQueryFrequency() * index.getCost()
             );
         }
 
@@ -132,8 +132,7 @@ public class Optimizer {
 
     class PlanPathVisitor implements PlanVisitor {
         private MPSolver solver;
-        public PlanPathVisitor(SqlClause clause, MPSolver solver) {
-
+        public PlanPathVisitor(MPSolver solver) {
             this.solver = solver;
         }
 

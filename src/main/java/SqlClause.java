@@ -1,4 +1,3 @@
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.ortools.linearsolver.MPSolver;
@@ -9,11 +8,14 @@ import java.util.stream.Collectors;
 
 public class SqlClause {
     private final Entity rootEntity;
+    private final DomainModel model;
     private Plan plan;
     private List<Conjunction> conjunctions;
     private List<Index> indices;
+    double partitionScanCost = 0.1;
 
-    public SqlClause(Entity rootEntity) {
+    public SqlClause(Entity rootEntity, DomainModel model) {
+        this.model = model;
         this.indices = new ArrayList<>();
         this.rootEntity = rootEntity;
     }
@@ -22,14 +24,12 @@ public class SqlClause {
         return conjunctions;
     }
 
-    public Set<Index> permute() {
+    public PermuteResult permute(DomainModel.Query query) {
         if (hasRootGenID()) {
-            return ImmutableSet.of();
+            return new PermuteResult(ImmutableSet.of(), null);
         }
 
-        Preconditions.checkState(plan == null, "Cannot rerun function (getPlan returns stateful object)");
-        this.plan = new Plan();
-
+        Plan plan = new Plan();
 
         Set<String> sargable = getSargablePredicates();
         Set<Index> indices = new HashSet<>();
@@ -38,14 +38,14 @@ public class SqlClause {
             for (Set<String> comb : Sets.combinations(sargable, i)) {
                 Set<String> remaining = new HashSet<>(getAllPredicates());
                 remaining.removeAll(comb);
-                Index index = new Index(comb, ImmutableSet.of(), remaining);
+                Index index = new Index(query, comb, ImmutableSet.of(), remaining);
                 indices.add(index);
                 plan.addPlan(new Plan(index));
                 this.indices.add(index);
             }
         }
 
-        return indices;
+        return new PermuteResult(indices, plan);
     }
 
     private boolean hasRootGenID() {
@@ -61,14 +61,6 @@ public class SqlClause {
         return this;
     }
 
-    public Plan getPlan() {
-        return plan;
-    }
-
-    public double getFrequency() {
-        return 100;
-    }
-
     public List<Index> getAllIndicies() {
         return this.indices;
     }
@@ -77,14 +69,26 @@ public class SqlClause {
         this.conjunctions = conjunctions;
     }
 
+    public class PermuteResult {
+        public final Set<Index> indices;
+        public final Plan plan;
+
+        public PermuteResult(Set<Index> indices, Plan plan) {
+            this.indices = indices;
+            this.plan = plan;
+        }
+    }
+
     public class Index {
+        private DomainModel.Query query;
         public final Set<String> merkle;
         private final Set<String> bTree;
         private final Set<String> remaining;
         private MPVariable var;
         private SqlClause clause = getSqlClause();
 
-        public Index(Set<String> merkle, Set<String> bTree, Set<String> remaining) {
+        public Index(DomainModel.Query query, Set<String> merkle, Set<String> bTree, Set<String> remaining) {
+            this.query = query;
             this.merkle = merkle;
             this.bTree = bTree;
             this.remaining = remaining;
@@ -114,13 +118,19 @@ public class SqlClause {
             return clause;
         }
 
-
         public double getCost() {
-            //Cost is: selectivity of the combination of scalars & a filter cost
+            //Cost:
+            //Frequency of query * cost of index lookup & scan
+            //Cost of index lookup:
+            // 1 * (scan) Number of elements in partition
+            if (!merkle.isEmpty() && remaining.isEmpty()) {
+                return 1;
+            }
+            return getScanCost();
+        }
 
-
-
-            return merkle.size() == 0 ? 100 : merkle.size();
+        public double getScanCost() {
+            return 1.05;
         }
 
         public MPVariable getOrCreateVarForIndex(MPSolver solver) {
@@ -129,6 +139,10 @@ public class SqlClause {
                 var = solver.makeBoolVar("i"+UUID.randomUUID().toString().substring(0, 4));
             }
             return var;
+        }
+
+        public int getQueryFrequency() {
+            return query.getFrequency();
         }
     }
 
