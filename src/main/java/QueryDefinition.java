@@ -1,19 +1,18 @@
 public class QueryDefinition {
     private String name;
-    private String type;
-    private final SqlClause sqlClause;
+    private TypeDef type;
+    private SqlClause sqlClause;
 
-    public QueryDefinition(String name, String type, SqlClause sqlClause) {
+    public QueryDefinition(String name, TypeDef type) {
         this.name = name;
         this.type = type;
-        this.sqlClause = sqlClause;
     }
 
     public String getName() {
         return name;
     }
 
-    public String getType() {
+    public TypeDef getType() {
         return type;
     }
 
@@ -28,5 +27,9 @@ public class QueryDefinition {
                 ", type='" + type + '\'' +
                 ", sqlClause=" + sqlClause +
                 '}';
+    }
+
+    public void setSqlClause(SqlClause sqlClause) {
+        this.sqlClause = sqlClause;
     }
 }

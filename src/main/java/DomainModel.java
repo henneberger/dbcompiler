@@ -47,8 +47,8 @@ public class DomainModel {
 
     public class Query extends QueryRelation {
 
-        public Query(String name, DomainModel.QuerySelectionSet selection) {
-            super(name, selection);
+        public Query(String name, QuerySelectionSet selection, Map<String, Map<String, Object>> directive) {
+            super(name, selection, directive);
         }
     }
 
@@ -80,9 +80,19 @@ public class DomainModel {
 
     public class QuerySelection {
         protected final String name;
+        private final Map<String, Map<String, Object>> directives;
 
-        public QuerySelection(String name) {
+        public QuerySelection(String name, Map<String, Map<String, Object>> directives) {
             this.name = name;
+            this.directives = directives;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public Map<String, Map<String, Object>> getDirectives() {
+            return directives;
         }
 
         public QueryDefinition getDefinition() {
@@ -100,8 +110,8 @@ public class DomainModel {
     public class QueryRelation extends QuerySelection {
         private DomainModel.QuerySelectionSet querySelectionSet;
 
-        public QueryRelation(String name, DomainModel.QuerySelectionSet selection) {
-            super(name);
+        public QueryRelation(String name, QuerySelectionSet selection, Map<String, Map<String, Object>> directives) {
+            super(name, directives);
             querySelectionSet = selection;
         }
 

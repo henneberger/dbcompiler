@@ -1,35 +1,56 @@
 type User
-@size(maxEntities: 10000)
+@size(max: 10000)
 {
   user_id: ID
-  username: String @selectivity(exp: 0)
-  todos: [Todo] @inverse(field: "user") @multiplicity(maxSize: 1000)
+  username: String @selectivity(max: 10000)
+  todos: [Todo] @inverse(field: "user") @multiplicity(max: 1000)
 }
 
 type Todo
-@size(maxEntities: 100000)
-@selectivity(exp_5: [["user.username", "title"]])
+@size(max: 100000)
+#@selectivity(hints: [{
+#    field: ["user.username", "status"], #If it isn't clear to the optimizer, we can hint here
+#    max: 1000,
+#    distribution: "zipf"
+#  }]
+#)
 {
   todo_id: ID
   title: String
     @mutable
-    @selectivity(exp: 4, distribution: "zipf")
-    @size(bytes: 1000)
+    @selectivity(max: 90000, distribution: "zipf")
   status: boolean @mutable
   user: User! @inverse(field: "todos")
 }
 
+## Query & Mutation type must be after entity type
+
 type Query
-@cluster(size_gb: "500")
- {
+{
+  #todo: no-directive does not parse.
+  todosById: Todo @sql(where: todo_id = $todo_id)
   todosByUser: [Todo] @sql(where: user.username = $username)
   todosByTitle: [Todo] @sql(where: user.username = $username AND title = $title)
   user: [User] @sql(where: user_id = $user_id)
 }
 
+## Queries must come after all type definitions
+
+
+query GetTodosById($todo_id: ID)
+@sla(throughput_per_second: 1000, latency_ms: 10)
+{
+  todosById(todo_id: $todo_id) {
+    title
+    status
+    user {
+      user_id
+    }
+  }
+}
 query GetTodosByUser($username: String)
-@sla(throughput:10000, latency_ms: 100)
- {
+@sla(throughput_per_second: 100, latency_ms: 50)
+{
   todosByUser(user_id: $user_id) {
     title
     status
@@ -37,15 +58,22 @@ query GetTodosByUser($username: String)
       user_id
     }
   }
-  todosByTitle(user_id: $username) {
+}
+query GetTodosByTitle($username: String, $title: title)
+@sla(throughput_per_second: 1, latency_ms: 1000)
+{
+  todosByTitle(user_id: $username, title: $title) {
     title
     status
     user {
       user_id
     }
   }
-
-  user(user_id: $username) {
+}
+query GetUserByID($user_id: ID)
+@sla(throughput_per_second: 10, latency_ms: 10)
+ {
+  user(user_id: $user_id) {
     title
     status
     user {

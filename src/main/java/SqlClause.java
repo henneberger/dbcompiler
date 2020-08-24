@@ -8,13 +8,14 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class SqlClause {
+    private final Entity rootEntity;
     private Plan plan;
     private List<Conjunction> conjunctions;
     private List<Index> indices;
 
-    public SqlClause(List<Conjunction> conjunctions) {
-        this.conjunctions = conjunctions;
+    public SqlClause(Entity rootEntity) {
         this.indices = new ArrayList<>();
+        this.rootEntity = rootEntity;
     }
 
     public List<Conjunction> getConjunctions() {
@@ -22,8 +23,13 @@ public class SqlClause {
     }
 
     public Set<Index> permute() {
+        if (hasRootGenID()) {
+            return ImmutableSet.of();
+        }
+
         Preconditions.checkState(plan == null, "Cannot rerun function (getPlan returns stateful object)");
         this.plan = new Plan();
+
 
         Set<String> sargable = getSargablePredicates();
         Set<Index> indices = new HashSet<>();
@@ -42,6 +48,15 @@ public class SqlClause {
         return indices;
     }
 
+    private boolean hasRootGenID() {
+        for (Conjunction conjunction : conjunctions) {
+            if (conjunction.isGenId()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public SqlClause getSqlClause() {
         return this;
     }
@@ -56,6 +71,10 @@ public class SqlClause {
 
     public List<Index> getAllIndicies() {
         return this.indices;
+    }
+
+    public void setConjunctions(List<Conjunction> conjunctions) {
+        this.conjunctions = conjunctions;
     }
 
     public class Index {
@@ -97,6 +116,10 @@ public class SqlClause {
 
 
         public double getCost() {
+            //Cost is: selectivity of the combination of scalars & a filter cost
+
+
+
             return merkle.size() == 0 ? 100 : merkle.size();
         }
 

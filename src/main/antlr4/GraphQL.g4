@@ -133,8 +133,8 @@ variableDefinition: variable ':' type_ defaultValue?;
 defaultValue: '=' value;
 
 //https://spec.graphql.org/June2018/#sec-Type-References
-type_: namedType '!'?
-    | listType '!'?
+type_: namedType nonnull='!'?
+    | listType nonnull='!'?
     ;
 
 namedType: name;
@@ -208,7 +208,7 @@ queryTypeDefinition:
     description? 'type' 'Query' implementsInterfaces? directive? queryRootDefinitions?;
 
 sqlDirective:
-    '@sql' '(' 'where: ' expr=sqlBooleanExpression ')'; //todo: Fix this quote situation later
+    '@sql' '('? 'where: '? expr=sqlBooleanExpression? ')'?; //todo: Fix this quote situation later
 
 sqlBooleanExpression:
     left=sqlExpression

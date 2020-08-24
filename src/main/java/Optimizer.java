@@ -2,7 +2,6 @@ import com.google.ortools.linearsolver.MPConstraint;
 import com.google.ortools.linearsolver.MPObjective;
 import com.google.ortools.linearsolver.MPSolver;
 import com.google.ortools.linearsolver.MPVariable;
-import com.google.ortools.sat.CpSolver;
 
 import java.util.List;
 import java.util.Map;
@@ -73,6 +72,7 @@ public class Optimizer {
         for (DomainModel.QuerySelection selection : rootSelections) {
             SqlClause clause = selection.getDefinition().getSqlClause();
             Plan plan = clause.getPlan();
+            if (plan == null) continue;
             plan.visit(new PlanPathVisitor(clause, solver));
         }
 

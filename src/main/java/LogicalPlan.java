@@ -15,7 +15,8 @@ public class LogicalPlan {
         Set<Set<String>> merkle = new HashSet<>();
         for (DomainModel.QuerySelection selection : rootSelections) {
             SqlClause clause = selection.getDefinition().getSqlClause();
-            for (SqlClause.Index index : clause.permute()) {
+            if (clause.getPlan() != null) continue;
+            for (SqlClause.Index index : clause.permute()) { //todo remove permute result
                 merkle.add(index.getMerkle());
                 allIndices.add(index);
             }
