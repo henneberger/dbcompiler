@@ -87,3 +87,9 @@ query GetUserByID($user_id: ID)
     }
   }
 }
+
+fragment UpdateStatus on Todo
+   @update(where: todo_id = $todo_id)
+{
+  status
+}

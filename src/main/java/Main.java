@@ -1,4 +1,5 @@
 import com.google.common.io.Resources;
+import dbcompiler.*;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
 
@@ -20,7 +21,7 @@ public class Main {
         GraphQLLexer lexer = new GraphQLLexer(CharStreams.fromString(graphql));
         CommonTokenStream tokenStream = new CommonTokenStream(lexer);
         GraphQLParser parser = new GraphQLParser(tokenStream);
-        GraphQLVisitorImpl visitor = new GraphQLVisitorImpl();
+        DomainParser visitor = new DomainParser();
 
         return visitor.visit(parser.document());
     }
