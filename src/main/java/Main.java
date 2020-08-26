@@ -13,8 +13,8 @@ public class Main {
                 Resources.getResource("todo.graphql"),
                     Charset.defaultCharset()));
 
-        new LogicalPlan(model).search();
-
+        LogicalPlan.Workload workload = new LogicalPlan(model).search();
+        new Optimizer(workload).optimize();
     }
 
     public DomainModel parse(String graphql) {

@@ -7,30 +7,71 @@ import com.google.ortools.linearsolver.MPVariable;
 
 import java.util.*;
 import static dbcompiler.LogicalPlan.*;
+import static dbcompiler.DomainModel.*;
 
 public class Optimizer {
     static {
         System.loadLibrary("jniortools");
     }
 
-    private final MPSolver solver;
+    private LogicalPlan.Workload workload;
+
+    private MPSolver solver;
     public static double infinity = java.lang.Double.POSITIVE_INFINITY;
 
-    private final List<Index> allIndices;
-    private final List<Plan> allPlans;
-    private final Set<UniqueIndex> uniqueIndices;
-    private final Map<Index, UniqueIndex> uniqueIndexMap;
+    private List<Index> allIndices;
+//    private List<Plan> allPlans;
+    private Set<UniqueIndex> uniqueIndices;
+    private Map<Index, UniqueIndex> uniqueIndexMap;
     private Map<UniqueIndex, MPVariable> uniqueIndexVarMap = new HashMap<>();
     private Map<Index, MPVariable> indexVarMap = new HashMap<>();
 
     private Cost cost = new Cost();
 
-    public Optimizer(Set<UniqueIndex> uniqueIndices, Map<Index, UniqueIndex> uniqueIndexMap, List<Index> allIndices, List<Plan> allPlans) {
-        this.uniqueIndices = uniqueIndices;
-        this.uniqueIndexMap = uniqueIndexMap;
-        this.allIndices = allIndices;
-        this.allPlans = allPlans;
+    public Optimizer(LogicalPlan.Workload workload) {
+        this.workload = workload;
         this.solver = MPSolver.createSolver("Optimizer", "CBC");
+        this.allIndices = getAllIndicies(workload.plans);
+        Set<Set<QueryDefinition.SqlClause.Conjunction.FieldPath>> merkle = new HashSet<>();
+        for (Index index : this.allIndices) {
+            merkle.add(index.merkle);
+        }
+
+        this.uniqueIndices = new HashSet<>();
+        this.uniqueIndexMap = new HashMap<>();
+
+        //todo: this is incorrect, fix this soon
+        Map<Set<QueryDefinition.SqlClause.Conjunction.FieldPath>, UniqueIndex> uniqueSetMap = new HashMap<>();
+        for (Index index : allIndices) {
+            UniqueIndex uniqueIndex;
+            if ((uniqueIndex = uniqueSetMap.get(index.merkle)) == null) {
+                uniqueIndex = new UniqueIndex(index.merkle);
+                uniqueSetMap.put(index.merkle, uniqueIndex);
+                uniqueIndices.add(uniqueIndex);
+            }
+
+            uniqueIndexMap.put(index, uniqueIndex);
+        }
+    }
+
+    private List<Index> getAllIndicies(List<LogicalPlan.QueryPlan> queries) {
+        List<Index> allIndicies = new ArrayList<>();
+        for (LogicalPlan.QueryPlan queryPlan : queries) {
+            for (Plan plan : queryPlan.plans) {
+                getAllIndicies(plan, allIndicies);
+            }
+        }
+        return allIndicies;
+    }
+
+    private void getAllIndicies(Plan plan, List<Index> allIndicies) {
+        if (plan.index != null) {
+            allIndicies.add(plan.index);
+        }
+        if (plan.children == null) return;
+        for (Plan child : plan.children) {
+            getAllIndicies(child, allIndicies);
+        }
     }
 
     //1 <= x1 + x2 <= inf
@@ -39,7 +80,6 @@ public class Optimizer {
          * Generate index variables: x1, x2, x3, ...
          */
         for (UniqueIndex index : uniqueIndices) {
-//            index.getOrCreateVarForIndex(solver);
             MPVariable variable = solver.makeBoolVar("u"+UUID.randomUUID().toString().substring(0, 4));
             uniqueIndexVarMap.put(index, variable);
         }
@@ -77,8 +117,8 @@ public class Optimizer {
          *   x1q1 + x2q1 >= 1, x2q1 <= x3q1
          *   x1q2 + x2q2 >= 1
          */
-        for (Plan plan : allPlans) {
-            setPathConstraints(plan);
+        for (LogicalPlan.QueryPlan queryPlan : workload.plans) {
+            setPathConstraints(queryPlan.plans);
         }
 
         /*
@@ -135,10 +175,10 @@ public class Optimizer {
 
     }
 
-    public void setPathConstraints(Plan plan) {
+    public void setPathConstraints(List<Plan> plan) {
         //1 <= x1q2 + x2q2 <= inf
         MPConstraint constraint = solver.makeConstraint(1, infinity);
-        for (Plan child : plan.children) {
+        for (Plan child : plan) {
             constraint.setCoefficient(indexVarMap.get(child.index), 1);
         }
     }
@@ -176,6 +216,18 @@ public class Optimizer {
         }
         for (UniqueIndex index : uniqueIndices) {
             System.out.println(index.toString() + " = " + uniqueIndexVarMap.get(index).solutionValue());
+        }
+    }
+
+    public static class UniqueIndex {
+        private final Set<QueryDefinition.SqlClause.Conjunction.FieldPath> merkle;
+        public UniqueIndex(Set<QueryDefinition.SqlClause.Conjunction.FieldPath> merkle) {
+            this.merkle = merkle;
+        }
+
+        @Override
+        public String toString() {
+            return "u_idx"+ merkle;
         }
     }
 }

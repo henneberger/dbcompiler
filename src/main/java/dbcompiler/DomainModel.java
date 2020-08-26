@@ -1,5 +1,7 @@
 package dbcompiler;
 
+import lombok.EqualsAndHashCode;
+
 import java.util.List;
 import java.util.Map;
 
@@ -43,6 +45,10 @@ public class DomainModel {
          */
         public class QueryDefinitionSelection extends QuerySelection {
             public QueryDefinition definition;
+
+            public Query getQuery() {
+                return Query.this;
+            }
         }
 
         /**
@@ -115,6 +121,39 @@ public class DomainModel {
         public QueryDefinition(String name, TypeDef type) {
             this.name = name;
             this.type = type;
+        }
+
+        public static class SqlClause {
+            public Entity rootEntity;
+            public List<Conjunction> conjunctions;
+
+            public static class Conjunction {
+                public final FieldPath fieldPath;
+                public final Object value;
+
+                public Conjunction(FieldPath fieldPath, Object value) {
+                    this.value = value;
+                    this.fieldPath = fieldPath;
+                }
+
+                @EqualsAndHashCode
+                public static class FieldPath {
+                    public List<Entity.Field> fields;
+                    public String toStringVal;
+                    public Entity entity;
+                    public boolean sargable = true;
+
+                    public boolean isSargable() {
+                        return sargable;
+                    }
+
+                    @Override
+                    public String toString() {
+                        return toStringVal;
+                    }
+
+                }
+            }
         }
     }
 

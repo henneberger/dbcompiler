@@ -42,7 +42,7 @@ public class Cost {
     }
 
     public static int estimatePartitionSize(LogicalPlan.Index index) {
-        SqlClause.Conjunction.FieldPath field = index.merkle.iterator().next();
+        DomainModel.QueryDefinition.SqlClause.Conjunction.FieldPath field = index.merkle.iterator().next();
 
         if (field.fields.size() > 1) {
             return 1;

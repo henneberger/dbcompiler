@@ -234,17 +234,17 @@ public class DomainParser extends GraphQLBaseVisitor {
         return mutation;
     }
 
-    public SqlClause visitSqlDirective(GraphQLParser.SqlDirectiveContext ctx, Entity rootEntity) {
-        SqlClause sqlClause = new SqlClause();
+    public QueryDefinition.SqlClause visitSqlDirective(GraphQLParser.SqlDirectiveContext ctx, Entity rootEntity) {
+        QueryDefinition.SqlClause sqlClause = new QueryDefinition.SqlClause();
         sqlClause.rootEntity = rootEntity;
         sqlClause.conjunctions = visitSqlBooleanExpression(ctx.expr, rootEntity);
         return sqlClause;
     }
 
-    public List<SqlClause.Conjunction> visitSqlBooleanExpression(GraphQLParser.SqlBooleanExpressionContext ctx, Entity rootEntity) {
+    public List<QueryDefinition.SqlClause.Conjunction> visitSqlBooleanExpression(GraphQLParser.SqlBooleanExpressionContext ctx, Entity rootEntity) {
         if (ctx == null || ctx.left == null) return ImmutableList.of();
 
-        List<SqlClause.Conjunction> conjunctions = new ArrayList<>();
+        List<QueryDefinition.SqlClause.Conjunction> conjunctions = new ArrayList<>();
         conjunctions.add(visitSqlExpression(ctx.left, rootEntity));
         if (ctx.right != null) {
             conjunctions.addAll(visitSqlBooleanExpression(ctx.right, rootEntity));
@@ -252,11 +252,11 @@ public class DomainParser extends GraphQLBaseVisitor {
         return conjunctions;
     }
 
-    public SqlClause.Conjunction visitSqlExpression(GraphQLParser.SqlExpressionContext ctx, Entity rootEntity) {
-        return new SqlClause.Conjunction(parseFieldPath(ctx.fieldExpression().getText(), rootEntity), null/*new dbcompiler.Query.Variable(ctx.sqlValue().getText())*/);
+    public QueryDefinition.SqlClause.Conjunction visitSqlExpression(GraphQLParser.SqlExpressionContext ctx, Entity rootEntity) {
+        return new QueryDefinition.SqlClause.Conjunction(parseFieldPath(ctx.fieldExpression().getText(), rootEntity), null/*new dbcompiler.Query.Variable(ctx.sqlValue().getText())*/);
     }
 
-    public static SqlClause.Conjunction.FieldPath parseFieldPath(String text, Entity rootEntity) {
+    public static QueryDefinition.SqlClause.Conjunction.FieldPath parseFieldPath(String text, Entity rootEntity) {
         List<Entity.Field> fieldPath = new ArrayList<>();
         String[] path = text.split("\\.");
         Entity entity = rootEntity;
@@ -268,7 +268,7 @@ public class DomainParser extends GraphQLBaseVisitor {
                     "Expression does not end with scalar field: {}", text);
             entity = field.typeDef.entity;
         }
-        SqlClause.Conjunction.FieldPath fieldPath1 = new SqlClause.Conjunction.FieldPath();
+        QueryDefinition.SqlClause.Conjunction.FieldPath fieldPath1 = new QueryDefinition.SqlClause.Conjunction.FieldPath();
         fieldPath1.fields = fieldPath;
         fieldPath1.toStringVal = text;
         fieldPath1.entity = rootEntity;
