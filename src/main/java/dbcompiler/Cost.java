@@ -6,6 +6,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class Cost {
+    public static double infinity = java.lang.Double.POSITIVE_INFINITY;
+
     public static double optimal_solution_margin = 1.1; //10%
     public static double row_scan_cost = 1.005;
     public static Map<LogicalPlan.Index, Double> indexCost = new HashMap<>();

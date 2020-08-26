@@ -1,15 +1,18 @@
 package dbcompiler;
 
+import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class DomainModel {
-    protected Map<String, Entity> entities;
-    protected Map<String, QueryDefinition> queryDefinitionMap;
-    protected List<Query> queries;
-    protected List<Mutation> mutations;
+    protected Map<String, Entity> entities = new HashMap<>();
+    protected Map<String, QueryDefinition> queryDefinitionMap = new HashMap<>();
+    protected List<Query> queries = new ArrayList<>();
+    protected List<Mutation> mutations = new ArrayList<>();
 
     /**
      * query Name(arguments)
@@ -80,6 +83,7 @@ public class DomainModel {
         public Map<String, Field> fieldMap;
         public EntitySizeDirective size;
 
+        @AllArgsConstructor
         public class Field {
             public String name;
             public TypeDef typeDef;
@@ -95,6 +99,7 @@ public class DomainModel {
         public String name;
     }
 
+    @AllArgsConstructor
     public static class TypeDef {
         public String typeName;
         public Entity entity;
@@ -113,15 +118,11 @@ public class DomainModel {
      * }
      *
      */
+    @AllArgsConstructor
     public static class QueryDefinition {
         public String name;
         public TypeDef type;
         public SqlClause sqlClause;
-
-        public QueryDefinition(String name, TypeDef type) {
-            this.name = name;
-            this.type = type;
-        }
 
         public static class SqlClause {
             public Entity rootEntity;
@@ -137,11 +138,12 @@ public class DomainModel {
                 }
 
                 @EqualsAndHashCode
+                @AllArgsConstructor
                 public static class FieldPath {
                     public List<Entity.Field> fields;
                     public String toStringVal;
                     public Entity entity;
-                    public boolean sargable = true;
+                    public boolean sargable;
 
                     public boolean isSargable() {
                         return sargable;

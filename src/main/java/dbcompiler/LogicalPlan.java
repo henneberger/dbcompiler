@@ -46,7 +46,7 @@ public class LogicalPlan {
                 Set<QueryDefinition.SqlClause.Conjunction.FieldPath> remaining = new HashSet<>(getAllPredicates(clause));
                 remaining.removeAll(comb);
 
-                Index index = new Index(selection.getQuery(), comb, ImmutableSet.of(), remaining, clause.rootEntity, clause);
+                Index index = new Index(selection.getQuery(), comb, ImmutableSet.of(), remaining, clause.rootEntity, clause, null);
                 plans.add(new Plan(index, null/*todo: recursively build joins if there are relationships in the remaining set*/));
             }
         }
@@ -98,6 +98,7 @@ public class LogicalPlan {
         public Set<QueryDefinition.SqlClause.Conjunction.FieldPath> remaining;
         public Entity rootEntity;
         public QueryDefinition.SqlClause sqlClause;
+        public Optimizer.UniqueIndex uniqueIndex;
 
         public String toString() {
             return "i"+merkle.toString();

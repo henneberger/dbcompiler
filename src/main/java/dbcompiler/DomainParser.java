@@ -13,44 +13,15 @@ import java.util.stream.Collectors;
 
 import static dbcompiler.DomainModel.*;
 
-/**
- * Converts
- */
 public class DomainParser extends GraphQLBaseVisitor {
     private DomainModel model;
 
     public DomainParser() {
         model = new DomainModel();
-        model.entities = new HashMap<>();
-        model.queryDefinitionMap = new HashMap<>();
-        model.queries = new ArrayList<>();
-        model.mutations = new ArrayList<>();
     }
     public DomainModel visit(GraphQLParser.DocumentContext ctx) {
         super.visit(ctx);
         return model;
-    }
-
-    @Override
-    public Object visitExecutableDefinition(GraphQLParser.ExecutableDefinitionContext ctx) {
-        Object ex = super.visitExecutableDefinition(ctx);
-        if (ex instanceof Mutation) {
-            model.mutations.add((Mutation)ex);
-        } else if (ex instanceof Query) {
-            model.queries.add((Query) ex);
-        }
-
-        return null;
-    }
-
-    @Override
-    public Object visitQueryRootDefinitions(GraphQLParser.QueryRootDefinitionsContext ctx) {
-        return super.visitQueryRootDefinitions(ctx);
-    }
-
-    @Override
-    public Object visitTypeDefinition(GraphQLParser.TypeDefinitionContext ctx) {
-        return super.visitTypeDefinition(ctx);
     }
 
     @Override
@@ -70,11 +41,8 @@ public class DomainParser extends GraphQLBaseVisitor {
     }
 
     public Entity.Field visitFieldDefinition(GraphQLParser.FieldDefinitionContext ctx, Entity entity) {
-        Entity.Field field = entity.new Field();
-        field.name = ctx.name().getText();
-        field.typeDef = visitType_(ctx.type_());
+        Entity.Field field = entity.new Field(ctx.name().getText(), visitType_(ctx.type_()), model.new Selectivity());
         Map<String,Map<String, Object>> directives = visitDirectives(ctx.directives());
-        field.selectivity = model.new Selectivity();
         if (directives.get("selectivity") != null && directives.get("selectivity").get("max") != null) {
             field.selectivity.estimate = Integer.parseInt(directives.get("selectivity").get("max").toString());
         }
@@ -83,10 +51,11 @@ public class DomainParser extends GraphQLBaseVisitor {
 
     @Override
     public Object visitQueryRootDefinition(GraphQLParser.QueryRootDefinitionContext ctx) {
-        DomainModel.QueryDefinition queryDefinition = new DomainModel.QueryDefinition(
+        TypeDef typeDef = visitType_(ctx.type_());
+        QueryDefinition queryDefinition = new QueryDefinition(
                 ctx.name().getText(),
-                visitType_(ctx.type_()));
-        queryDefinition.sqlClause = visitSqlDirective(ctx.sqlDirective(), queryDefinition.type.entity);
+                typeDef,
+                visitSqlDirective(ctx.sqlDirective(), typeDef.entity));
         model.queryDefinitionMap.put(queryDefinition.name, queryDefinition);
         return queryDefinition;
     }
@@ -102,21 +71,13 @@ public class DomainParser extends GraphQLBaseVisitor {
     }
 
     public TypeDef visitNamedType(GraphQLParser.NamedTypeContext ctx, Token token) {
-        TypeDef typeDef = new TypeDef();
-        typeDef.typeName = ctx.name().getText();
-        typeDef.entity = model.entities.get(ctx.name().getText());
-        typeDef.multiplicity = TypeDef.Multiplicity.SINGLE;
-        typeDef.nonnull = token != null;
-        return typeDef;
+        return new TypeDef(ctx.name().getText(), model.entities.get(ctx.name().getText()), TypeDef.Multiplicity.SINGLE,
+                token != null);
     }
 
     public TypeDef visitListType(GraphQLParser.ListTypeContext ctx, Token token) {
-        TypeDef typeDef = new TypeDef();
-        typeDef.typeName = ctx.type_().namedType().name().getText();
-        typeDef.entity = model.entities.get(ctx.type_().namedType().name().getText());
-        typeDef.multiplicity = TypeDef.Multiplicity.LIST;
-        typeDef.nonnull = token != null;
-        return typeDef;
+        return new TypeDef(ctx.type_().namedType().name().getText(), model.entities.get(ctx.type_().namedType().name().getText()),
+            TypeDef.Multiplicity.LIST, token != null);
     }
 
     @Override
@@ -124,11 +85,10 @@ public class DomainParser extends GraphQLBaseVisitor {
         if (ctx.operationType().getText().equals("query")) {
             return visitQuery(ctx);
         } else if (ctx.operationType().getText().equals("mutation")) {
-            return null; // visitMutation(ctx);
+            //return visitMutation(ctx);
         }
         return null;
     }
-
 
     private Query visitQuery(GraphQLParser.OperationDefinitionContext ctx) {
         Query query = new Query();
@@ -146,8 +106,8 @@ public class DomainParser extends GraphQLBaseVisitor {
                 query.sla.latency_ms = Integer.parseInt(latency_ms);
             }
         }
-
-        return query;
+        model.queries.add(query);
+        return null;
     }
 
     @Override
@@ -196,41 +156,17 @@ public class DomainParser extends GraphQLBaseVisitor {
         }
         return queryDefinitionSelections;
     }
-//    public List<dbcompiler.Query.QuerySelection> visitSelectionSet(GraphQLParser.SelectionSetContext ctx, dbcompiler.Query query) {
-//        String name = null;
-//        if (ctx.parent instanceof GraphQLParser.OperationDefinitionContext) {
-//            name = ((GraphQLParser.OperationDefinitionContext) ctx.parent).typeName().getText();
-//        } else if (ctx.parent instanceof GraphQLParser.FieldContext) {
-//            name = ((GraphQLParser.FieldContext) ctx.parent).typeName().getText();
-//        }
-//
-//        List<dbcompiler.Query.QuerySelection> selections = ctx.selection().stream()
-//                .map(sel-> visitSelection(sel))
-//                .collect(Collectors.toList());
-//        return query.new QuerySelection(name, selections);
-//    }
-//
-//    @Override
-//    public dbcompiler.Query.QuerySelection visitSelection(GraphQLParser.SelectionContext ctx) {
-//        if (containsChildSelectionSet(ctx)) {
-//            return new QueryRelation(ctx.field().name().getText(), visitSelectionSet(ctx.field().selectionSet()), ImmutableMap.of());
-//        }
-//        return new dbcompiler.Query.QuerySelection(ctx.field().name().getText(), ImmutableMap.of());
-//    }
 
     @Override
     public Object visitField(GraphQLParser.FieldContext ctx) {
         return null;
     }
 
-    private boolean containsChildSelectionSet(GraphQLParser.SelectionContext ctx) {
-        return ctx.field().selectionSet() != null;
-    }
-
     @Override
     public Object visitFragmentDefinition(GraphQLParser.FragmentDefinitionContext ctx) {
         Mutation mutation = new Mutation();
         mutation.name = ctx.fragmentName().getText();
+        model.mutations.add(mutation);
         return mutation;
     }
 
@@ -268,11 +204,7 @@ public class DomainParser extends GraphQLBaseVisitor {
                     "Expression does not end with scalar field: {}", text);
             entity = field.typeDef.entity;
         }
-        QueryDefinition.SqlClause.Conjunction.FieldPath fieldPath1 = new QueryDefinition.SqlClause.Conjunction.FieldPath();
-        fieldPath1.fields = fieldPath;
-        fieldPath1.toStringVal = text;
-        fieldPath1.entity = rootEntity;
-        return fieldPath1;
+        return new QueryDefinition.SqlClause.Conjunction.FieldPath(fieldPath, text, rootEntity, true);
     }
 
 }
