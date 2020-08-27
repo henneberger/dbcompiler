@@ -31,12 +31,12 @@ public class Optimizer {
         this.uniqueIndices = new HashSet<>();
 
         //todo: this is incorrect, fix this soon
-        Map<Set<QueryDefinition.SqlClause.Conjunction.FieldPath>, UniqueIndex> uniqueSetMap = new HashMap<>();
+        Map<Index, UniqueIndex> uniqueSetMap = new HashMap<>();
         for (Index index : allIndices) {
             UniqueIndex uniqueIndex;
-            if ((uniqueIndex = uniqueSetMap.get(index.merkle)) == null) {
-                uniqueIndex = new UniqueIndex(index.merkle);
-                uniqueSetMap.put(index.merkle, uniqueIndex);
+            if ((uniqueIndex = uniqueSetMap.get(index)) == null) {
+                uniqueIndex = new UniqueIndex(index.merkle, index.bTree, index.rootEntity);
+                uniqueSetMap.put(index, uniqueIndex);
                 uniqueIndices.add(uniqueIndex);
             }
             index.uniqueIndex = uniqueIndex;
@@ -189,16 +189,20 @@ public class Optimizer {
     }
 
     public static class UniqueIndex {
-        private final Set<QueryDefinition.SqlClause.Conjunction.FieldPath> merkle;
+        private final Set<FieldPath> merkle;
+        private final List<OrderBy> bTree;
+        private final Entity rootEntity;
         public MPVariable variable;
 
-        public UniqueIndex(Set<QueryDefinition.SqlClause.Conjunction.FieldPath> merkle) {
+        public UniqueIndex(Set<FieldPath> merkle, List<OrderBy> bTree, Entity rootEntity) {
             this.merkle = merkle;
+            this.bTree = bTree;
+            this.rootEntity = rootEntity;
         }
 
         @Override
         public String toString() {
-            return "u_idx"+ merkle;
+            return "u"+ merkle + bTree;
         }
     }
 }

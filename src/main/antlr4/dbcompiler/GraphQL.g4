@@ -89,8 +89,8 @@ value:
 	| floatValue
 	| stringValue
 	| booleanValue
-	| nullValue
-	| enumValue
+	| nullValue //todo
+	| enumValue //todo
 	| listValue
 	| objectValue
    ;
@@ -207,9 +207,6 @@ objectTypeDefinition:
 queryTypeDefinition:
     description? 'type' 'Query' implementsInterfaces? directive? queryRootDefinitions?;
 
-sqlDirective:
-    '@sql' '('? 'where: '? expr=sqlBooleanExpression? ')'?; //todo: Fix this quote situation later
-
 sqlBooleanExpression:
     left=sqlExpression
     | left=sqlExpression 'AND' right=sqlBooleanExpression;
@@ -231,8 +228,7 @@ implementsInterfaces: 'implements' '&'? namedType
 
 queryRootDefinitions: '{'  queryRootDefinition+ '}';
 
-queryRootDefinition: description? name  argumentsDefinition? ':' type_  sqlDirective directives? ;
-
+queryRootDefinition: description? name  argumentsDefinition? ':' type_ directives? ;
 
 fieldsDefinition: '{'  fieldDefinition+ '}';
 fieldDefinition: description? name  argumentsDefinition? ':' type_  directives? ;

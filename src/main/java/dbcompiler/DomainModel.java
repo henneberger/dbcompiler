@@ -2,11 +2,9 @@ package dbcompiler;
 
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
+import lombok.RequiredArgsConstructor;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class DomainModel {
     protected Map<String, Entity> entities = new HashMap<>();
@@ -48,6 +46,7 @@ public class DomainModel {
          */
         public class QueryDefinitionSelection extends QuerySelection {
             public QueryDefinition definition;
+            public int pageSize = 10;
 
             public Query getQuery() {
                 return Query.this;
@@ -82,16 +81,17 @@ public class DomainModel {
         public String entityName;
         public Map<String, Field> fieldMap;
         public EntitySizeDirective size;
+        public Map<Set<FieldPath>, Selectivity> selectivityMap;
 
         @AllArgsConstructor
         public class Field {
             public String name;
             public TypeDef typeDef;
-            public Selectivity selectivity;
+            public boolean immutable;
         }
 
         public class EntitySizeDirective {
-            int max = 9999;
+            int max = 999999999;
         }
     }
 
@@ -124,45 +124,82 @@ public class DomainModel {
         public TypeDef type;
         public SqlClause sqlClause;
 
+        @AllArgsConstructor
         public static class SqlClause {
             public Entity rootEntity;
             public List<Conjunction> conjunctions;
+            public List<OrderBy> orders;
 
             public static class Conjunction {
                 public final FieldPath fieldPath;
                 public final Object value;
+                public final Op op = Op.eq;
 
                 public Conjunction(FieldPath fieldPath, Object value) {
                     this.value = value;
                     this.fieldPath = fieldPath;
                 }
-
-                @EqualsAndHashCode
-                @AllArgsConstructor
-                public static class FieldPath {
-                    public List<Entity.Field> fields;
-                    public String toStringVal;
-                    public Entity entity;
-                    public boolean sargable;
-
-                    public boolean isSargable() {
-                        return sargable;
-                    }
-
-                    @Override
-                    public String toString() {
-                        return toStringVal;
-                    }
-
+                enum Op {
+                    eq
                 }
             }
+
+        }
+
+    }
+
+    @EqualsAndHashCode
+    @AllArgsConstructor
+    public static class FieldPath {
+        public List<Entity.Field> fields;
+        public String toStringVal;
+        public Entity entity;
+        public boolean sargable;
+
+        public boolean isSargable() {
+            return sargable;
+        }
+
+        @Override
+        public String toString() {
+            return toStringVal;
         }
     }
 
     /**
      * Selectivity directive for fields and entities
      */
-    public class Selectivity {
-        public int estimate = 9999;
+    public static class Selectivity {
+        public int distinct = 0;
+        public Distribution distribution;
+        public Set<FieldPath> fields;
+    }
+
+    public static interface Distribution {
+        public int calculateExpected(int needed_items, int distinct);
+    }
+    public static class BinomialDistribution implements Distribution {
+
+        @Override
+        public int calculateExpected(int needed_items, int distinct) {
+            //todo: Actual calculation for expected search
+            return (int) (1.645 * (needed_items / (1 / distinct)));
+        }
+    }
+
+    @AllArgsConstructor
+    @EqualsAndHashCode
+    public static class OrderBy {
+        public FieldPath path;
+        public Direction direction;
+
+        @Override
+        public String toString() {
+            return path.toStringVal + " " + direction.name().charAt(0);
+        }
+    }
+
+    public static enum Direction {
+        DESC, ASC, ANY
     }
 }

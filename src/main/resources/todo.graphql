@@ -1,47 +1,68 @@
 type User
 @size(max: 10000)
+@selectivity(fields: [{
+    field: ["age"]
+    distinct: 120
+  },{
+    field: ["username"]
+    distinct: 10000
+  }]
+)
 {
   user_id: ID
-  username: String @selectivity(max: 10000)
+  username: String
+  active: boolean @mutable
+  age: int
   todos: [Todo] @inverse(field: "user") @multiplicity(max: 1000)
 }
 
 type Todo
 @size(max: 100000)
-#@selectivity(hints: [{
-#    field: ["user.username", "status"], #If it isn't clear to the optimizer, we can hint here
-#    max: 1000,
-#    distribution: "zipf"
-#  }]
-#)
+@selectivity(fields: [{
+    field: ["user.username", "status"]
+    distinct: 1000
+  },{
+    field: ["priority"]
+    distinct: 100
+  },{
+    field: ["status"]
+    distinct: 2
+  },{
+    field: ["user.username"]
+    distinct: 1
+  }
+  ]
+)
 {
   todo_id: ID
   title: String
     @mutable
-    @selectivity(max: 1000, distribution: "zipf")
   status: boolean
     @mutable
-    @selectivity(max: 50000, distribution: "zipf")
+  #example order by fields
+  priority: int
+
   user: User! @inverse(field: "todos")
 }
 
 ## Query & Mutation type must be after entity type
-
+# Order: By INT, Date, Alphabetically, Your own order (factors: attributes w/ levels)
+# Only order if result set is small or immutable
 type Query
 {
   #todo: no-directive does not parse.
-  todosById: Todo @sql(where: todo_id = $todo_id)
-  todosByUser: [Todo] @sql(where: user.username = $username)
-  todosByTitle: [Todo] @sql(where: user.username = $username AND title = $title)
-  todosByCompleted: [Todo] @sql(where: user.username = $username AND status = $status) #Assure we can do a partition scan easily
-  user: [User] @sql(where: user_id = $user_id)
+  todosById: Todo @sql(where: "todo_id = $todo_id")
+  todosByUser: [Todo] @sql(where: "user.username = $username", order: [{field: "todo_id", direction:"DESC"}])
+  todosByTitle: [Todo] @sql(where: "user.username = $username AND title = $title", order: [{field: "priority", direction:"DESC"}, {field: "status", direction:"DESC"}])
+  todosByCompleted: [Todo] @sql(where: "user.username = $username AND status = $status", order: [{field: "priority", direction:"DESC"}])
+  user: [User] @sql(where: "user_id = $user_id")
 }
 
 ## Queries must come after all type definitions
 
 
 query GetTodosById($todo_id: ID)
-@sla(throughput_per_second: 1000, latency_ms: 10)
+@sla(throughput_per_second: 1000, latency_ms: 10, percentile: 99.99)
 {
   todosById(todo_id: $todo_id) {
     title
@@ -89,7 +110,29 @@ query GetUserByID($user_id: ID)
 }
 
 fragment UpdateStatus on Todo
-   @update(where: todo_id = $todo_id)
+   @update(where: "todo_id = $todo_id")
 {
   status
+}
+
+
+fragment CreateTodo on Todo
+   @insert
+{
+  title
+  status
+  user {
+    user_id
+  }
+}
+
+
+fragment CreateUserWithFirstTodo on User
+   @insert
+{
+  username
+  todo {
+    title
+    status
+  }
 }
