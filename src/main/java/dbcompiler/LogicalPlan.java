@@ -3,6 +3,7 @@ package dbcompiler;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
+import com.google.ortools.linearsolver.MPVariable;
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
@@ -23,8 +24,8 @@ public class LogicalPlan {
     public Workload search() {
         List<QueryPlan> plans = new ArrayList<>();
         for (Query query : model.queries) {
-            for (Query.QueryDefinitionSelection definition : query.selections) {
-                QueryPlan plan = new QueryPlan(query, permute(definition));
+            for (Query.QueryDefinitionSelection selection : query.selections) {
+                QueryPlan plan = new QueryPlan(query, permute(query, selection.definition.sqlClause, selection.pageSize));
                 if (plan.plans == null) continue;
                 plans.add(plan);
             }
@@ -32,8 +33,7 @@ public class LogicalPlan {
         return new Workload(plans);
     }
 
-    public List<Plan> permute(Query.QueryDefinitionSelection selection) {
-        QueryDefinition.SqlClause clause = selection.definition.sqlClause;
+    public List<QPlan> permute(Query rootQuery, QueryDefinition.SqlClause clause, int pageSize) {
         /*
          * Queries with a generated ID on its root path can always be found with a direct lookup
          */
@@ -43,31 +43,34 @@ public class LogicalPlan {
 
 
         Set<FieldPath> sargable = getSargablePredicates(clause);
-        List<Plan> plans = new ArrayList<>();
+        List<QPlan> plans = new ArrayList<>();
         Set<List<OrderBy>> clusteringKeys = getClusteringKeys(clause);
 
         for (int i = 1; i <= sargable.size(); i++) {
             for (Set<FieldPath> comb : Sets.combinations(sargable, i)) {
                 Set<FieldPath> remaining = new HashSet<>(getAllPredicates(clause));
                 remaining.removeAll(comb);
-                Set<FieldPath> partitionKey = new HashSet<>(comb);
                 for (List<OrderBy> clusteringKey : clusteringKeys) {
+                    Set<FieldPath> partitionKey = new HashSet<>(comb);
                     //Migrate remaining paths in clustering key to partition key
                     for (OrderBy order : clusteringKey) {
                         if (remaining.contains(order.path)) {
+                            partitionKey.add(order.path);
                             remaining.remove(order.path);
+                        } else if (clause.orders.contains(order)) {
                             partitionKey.add(order.path);
                         } else {
                             break;
                         }
                     }
 
-                    Index index = new Index(selection.getQuery(), comb, clusteringKey, remaining, clause.rootEntity, clause, partitionKey, selection);
-                    plans.add(new Plan(index, null));
+                    Index index = new Index(rootQuery, comb, clusteringKey, remaining, clause.rootEntity, clause, partitionKey, pageSize);
+                    if (index.getRowScanCost() < rootQuery.sla.latency_ms) {
+                        plans.add(new QPlan(index, null));
+                    }
                 }
             }
         }
-        //TODO: Add a scan as root if possible
 
         return plans;
     }
@@ -161,13 +164,13 @@ public class LogicalPlan {
     @AllArgsConstructor
     public class QueryPlan {
         public Query query;
-        public List<Plan> plans;
+        public List<QPlan> plans;
     }
 
     @AllArgsConstructor
-    public static class Plan {
+    public static class QPlan {
         public Index index;
-        public List<Plan> children;
+        public List<QPlan> children;
     }
 
     @RequiredArgsConstructor
@@ -183,16 +186,74 @@ public class LogicalPlan {
         @EqualsAndHashCode.Exclude
         public final QueryDefinition.SqlClause sqlClause;
         @EqualsAndHashCode.Exclude
-        public final Set<FieldPath> partitionKey;
+        public final Set<FieldPath> primaryKey;
         @EqualsAndHashCode.Exclude
-        public final Query.QueryDefinitionSelection selection;
+        public final int pageSize;
         @EqualsAndHashCode.Exclude
         public Optimizer.UniqueIndex uniqueIndex;
+        public MPVariable variable;
 
 
         public String toString() {
-            return "i"+merkle.toString() + "" + bTree.toString();
+            return "i:query:"+query.name+merkle.toString() + "" + bTree.toString();
         }
+
+        public double getRowScanCost() {
+
+            double sortCost = calculateSortRowSize(rootEntity, merkle, bTree, sqlClause.orders);
+            double filterCost = calculateFilterRowSize(rootEntity, merkle, bTree, sqlClause.conjunctions);
+            return Math.max(filterCost * Cost.row_scan_cost,
+                    sortCost * Cost.row_scan_cost);
+        }
+
+        private double calculateFilterRowSize(Entity entity, Set<FieldPath> merkle, List<OrderBy> bTree, List<QueryDefinition.SqlClause.Conjunction> conjunctions) {
+            Set<FieldPath> paths = conjunctions.stream().map(e->e.fieldPath).collect(Collectors.toSet());
+            for (FieldPath m : merkle) {
+                paths.remove(m);
+            }
+
+            for (OrderBy orderBy : bTree) {
+                if (paths.contains(orderBy.path)) {
+                    paths.remove(orderBy.path);
+                } else {
+                    break;
+                }
+            }
+
+            if (paths.isEmpty()) {
+                return 1;
+            } else {
+                Selectivity selectivity = entity.selectivityMap.get(paths);
+                Preconditions.checkNotNull(selectivity, "Selectivity needed for %s", paths);
+
+                return Math.min(selectivity.distinct, (int)1.645 * (pageSize / (1d / 2/*boolean*/)));
+            }
+        }
+
+        private double calculateSortRowSize(Entity entity, Set<FieldPath> merkle, List<OrderBy> bTree, List<OrderBy> orders) {
+            if (orders.isEmpty()) return 0;
+            Set<FieldPath> all = new HashSet<>(merkle);
+            int idx = -2;
+            for (int i = 0; i < bTree.size() && i < orders.size(); i++) { //b-tree always has the last element as ID
+                OrderBy bTreeOrder = bTree.get(i);
+                OrderBy order = orders.get(i);
+                if (!bTreeOrder.equals(order)) {
+                    break;
+                }
+                idx = i;
+                all.add(bTreeOrder.path);
+            }
+
+            if ((idx + 1)== orders.size()) {
+                return 0; //all satisfied
+            } else {
+                Selectivity selectivity = entity.selectivityMap.get(all);
+                Preconditions.checkNotNull(selectivity, "Selectivity needed for %s", all);
+
+                return selectivity.distinct;
+            }
+        }
+
     }
 
     @AllArgsConstructor

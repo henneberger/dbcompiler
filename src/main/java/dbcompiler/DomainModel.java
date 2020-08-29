@@ -2,7 +2,6 @@ package dbcompiler;
 
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
 
 import java.util.*;
 
@@ -50,6 +49,11 @@ public class DomainModel {
 
             public Query getQuery() {
                 return Query.this;
+            }
+
+            @Override
+            public String toString() {
+                return definition.sqlClause.toString();
             }
         }
 
@@ -129,6 +133,7 @@ public class DomainModel {
             public Entity rootEntity;
             public List<Conjunction> conjunctions;
             public List<OrderBy> orders;
+            public String toStr;
 
             public static class Conjunction {
                 public final FieldPath fieldPath;
@@ -144,6 +149,10 @@ public class DomainModel {
                 }
             }
 
+            @Override
+            public String toString() {
+                return toStr;
+            }
         }
 
     }
@@ -176,14 +185,14 @@ public class DomainModel {
     }
 
     public static interface Distribution {
-        public int calculateExpected(int needed_items, int distinct);
+        public double calculateExpected(int needed_items, int distinct);
     }
     public static class BinomialDistribution implements Distribution {
 
         @Override
-        public int calculateExpected(int needed_items, int distinct) {
+        public double calculateExpected(int needed_items, int distinct) {
             //todo: Actual calculation for expected search
-            return (int) (1.645 * (needed_items / (1 / distinct)));
+            return (double) (1.645 * (needed_items / (1d / distinct)));
         }
     }
 

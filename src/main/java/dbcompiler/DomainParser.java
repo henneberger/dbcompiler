@@ -227,7 +227,9 @@ public class DomainParser extends GraphQLBaseVisitor {
         if (!directives.containsKey("sql")) return null;
         return new QueryDefinition.SqlClause(rootEntity,
                 parseConjunctions(directives.get("sql"), rootEntity),
-                parseOrderBy(directives.get("sql"), rootEntity));
+                parseOrderBy(directives.get("sql"), rootEntity),
+                directives.get("sql").toString()
+                );
     }
 
     private List<OrderBy> parseOrderBy(Map<String, Object> directive, Entity rootEntity) {

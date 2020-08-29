@@ -9,19 +9,19 @@ public class WorkloadUtil {
     public static List<Index> getAllIndicies(List<LogicalPlan.QueryPlan> queries) {
         List<Index> allIndicies = new ArrayList<>();
         for (LogicalPlan.QueryPlan queryPlan : queries) {
-            for (Plan plan : queryPlan.plans) {
+            for (QPlan plan : queryPlan.plans) {
                 getAllIndicies(plan, allIndicies);
             }
         }
         return allIndicies;
     }
 
-    private static void getAllIndicies(Plan plan, List<Index> allIndicies) {
+    private static void getAllIndicies(QPlan plan, List<Index> allIndicies) {
         if (plan.index != null) {
             allIndicies.add(plan.index);
         }
         if (plan.children == null) return;
-        for (Plan child : plan.children) {
+        for (QPlan child : plan.children) {
             getAllIndicies(child, allIndicies);
         }
     }

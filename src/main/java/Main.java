@@ -14,7 +14,9 @@ public class Main {
                     Charset.defaultCharset()));
 
         LogicalPlan.Workload workload = new LogicalPlan(model).search();
-        new Optimizer(workload).optimize();
+        Optimizer optimizer = new Optimizer(workload);
+        int minTables = optimizer.optimize();
+        System.out.println(minTables);
     }
 
     public DomainModel parse(String graphql) {

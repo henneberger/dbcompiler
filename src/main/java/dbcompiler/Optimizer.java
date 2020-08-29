@@ -1,5 +1,6 @@
 package dbcompiler;
 
+import com.google.ortools.constraintsolver.Solver;
 import com.google.ortools.linearsolver.MPConstraint;
 import com.google.ortools.linearsolver.MPObjective;
 import com.google.ortools.linearsolver.MPSolver;
@@ -15,18 +16,13 @@ public class Optimizer {
     }
 
     private LogicalPlan.Workload workload;
-    private MPSolver solver;
 
     private List<Index> allIndices;
-    private Set<UniqueIndex> uniqueIndices;
-    private Map<UniqueIndex, MPVariable> uniqueIndexVarMap = new HashMap<>();
-    private Map<Index, MPVariable> indexVarMap = new HashMap<>();
 
-    private Cost cost = new Cost();
+    private Set<UniqueIndex> uniqueIndices;
 
     public Optimizer(LogicalPlan.Workload workload) {
         this.workload = workload;
-        this.solver = MPSolver.createSolver("Optimizer", "CBC");
         this.allIndices = WorkloadUtil.getAllIndicies(workload.plans);
         this.uniqueIndices = new HashSet<>();
 
@@ -44,16 +40,73 @@ public class Optimizer {
     }
 
 
-    //1 <= x1 + x2 <= inf
-    public void optimize() {
+    /**
+     * Find the minimum number of tables followed by the minimum cost
+     */
+    public int optimize() {
+        MPSolver solver = MPSolver.createSolver("Optimizer", "CBC");
+        for (LogicalPlan.QueryPlan plan : workload.plans) {
+            System.out.println(plan.query.selections);
+            for (QPlan qplan : plan.plans) {
+                printCostTree("  ", qplan);
+            }
+        }
+
         /*
          * Generate index variables: x1, x2, x3, ...
          */
         for (UniqueIndex index : uniqueIndices) {
-            MPVariable variable = solver.makeBoolVar("u"+UUID.randomUUID().toString().substring(0, 4));
-            uniqueIndexVarMap.put(index, variable);
+            index.variable = solver.makeBoolVar("u" + index.toString());
         }
 
+        for (Index index : allIndices) {
+            MPVariable uniqueVariable = index.uniqueIndex.variable;
+            MPVariable indexVariable = solver.makeBoolVar(index.toString());
+
+            MPConstraint constraint = solver.makeConstraint(0, Cost.infinity);
+            constraint.setCoefficient(uniqueVariable, 1);
+            constraint.setCoefficient(indexVariable, -1);
+            index.variable = indexVariable;
+        }
+
+        for (LogicalPlan.QueryPlan queryPlan : workload.plans) {
+            setPathConstraintsForIndex(solver, queryPlan.plans);
+        }
+
+        /*
+         * Generate the cost object function:
+         *  min(freq * cost * x1q1, ...)
+         */
+        MPObjective objective = solver.objective();
+        for (UniqueIndex index : uniqueIndices) {
+            objective.setCoefficient(index.variable, 1);
+        }
+        objective.setMinimization();
+
+        /*
+         * Set a size cost:
+         *   size * x1 + size * x2 + ... < total_size
+         */
+
+        /*
+         * Set a maximum write cost:
+         *   for each entity's table
+         *   x1 + x3 + ... < write_limit_per_table
+         */
+
+        solveAndPrint(solver);
+        next((int)solver.objective().value());
+        return (int)solver.objective().value();
+    }
+    public void next(int minTables) {
+
+        MPSolver solver = MPSolver.createSolver("Optimizer", "CBC");
+
+        MPConstraint minTableConstraint = solver.makeConstraint(minTables, minTables);
+        for (UniqueIndex index : uniqueIndices) {
+            index.variable = solver.makeBoolVar("u"+index.toString());
+            minTableConstraint.setCoefficient(index.variable, 1);
+        }
         /*
          * Generate index+query variables: x1q1, x2q1, x3q1, ...
          *
@@ -61,14 +114,15 @@ public class Optimizer {
         for (Index index : allIndices) {
             /*
              * Assign index & index+query constraints: x1q1 <= x1, x2q1 <= x2, ...
+             * 0 <= -x1 + x1q1 <= inf
              */
-            MPVariable queryIndexVariable = uniqueIndexVarMap.get(index.uniqueIndex);
-            MPConstraint constraint = solver.makeConstraint(0, Cost.infinity);
-            constraint.setCoefficient(queryIndexVariable, 1);
-            MPVariable indexVariable = solver.makeBoolVar("i"+UUID.randomUUID().toString().substring(0, 4));
-            indexVarMap.put(index, indexVariable);
+            MPVariable uniqueVariable = index.uniqueIndex.variable;
+            MPVariable indexVariable = solver.makeBoolVar(index.toString());
 
+            MPConstraint constraint = solver.makeConstraint(0, Cost.infinity);
+            constraint.setCoefficient(uniqueVariable, 1);
             constraint.setCoefficient(indexVariable, -1);
+            index.variable = indexVariable;
         }
 
         /*
@@ -87,56 +141,23 @@ public class Optimizer {
          *   x1q2 + x2q2 >= 1
          */
         for (LogicalPlan.QueryPlan queryPlan : workload.plans) {
-            setPathConstraints(queryPlan.plans);
+            setPathConstraintsForIndex(solver, queryPlan.plans);
         }
-
-        /*
-         * Generate the cost object function:
-         *  min(freq * cost * x1q1, ...)
-         */
-        MPObjective objective = solver.objective();
-        for (Index index : allIndices) {
-            MPVariable queryIndexVariable = indexVarMap.get(index);
-            objective.setCoefficient(queryIndexVariable,
-                    index.query.sla.throughput_per_second * cost.indexCost(index)
-            );
-        }
-        objective.setMinimization();
-
-        /*
-         * Set a size cost:
-         *   size * x1 + size * x2 + ... < total_size
-         */
-
-        /*
-         * Set a maximum write cost:
-         *   for each entity's table
-         *   x1 + x3 + ... < write_limit_per_table
-         */
-
-        solveAndPrint(solver);
 
         /*
          * Set solution as total cost
          * prev_solution <= freq * cost * x1q1, ...
          */
 
-        MPConstraint optimal = solver.makeConstraint(0, solver.objective().value() * Cost.optimal_solution_margin, "total_cost");
-        for (Index index : allIndices) {
-            MPVariable queryIndexVariable = indexVarMap.get(index);
-
-            optimal.setCoefficient(queryIndexVariable,
-                    index.query.sla.throughput_per_second * cost.indexCost(index)
-            );
-        }
-
-        objective.clear();
         /*
          * Rerun function to find minimum number of indicies with previous solution as constraint
          * x1 + x2
          */
-        for (UniqueIndex index : uniqueIndices) {
-            objective.setCoefficient(uniqueIndexVarMap.get(index), 1);
+        MPObjective objective = solver.objective();
+        for (Index index : allIndices) {
+            objective.setCoefficient(index.variable,
+                    index.getRowScanCost()
+            );
         }
         objective.setMinimization();
 
@@ -144,11 +165,19 @@ public class Optimizer {
 
     }
 
-    public void setPathConstraints(List<Plan> plan) {
+    public void setPathConstraintsForIndex(MPSolver solver, List<QPlan> plan) {
         //1 <= x1q2 + x2q2 <= inf
         MPConstraint constraint = solver.makeConstraint(1, Cost.infinity);
-        for (Plan child : plan) {
-            constraint.setCoefficient(indexVarMap.get(child.index), 1);
+        for (QPlan child : plan) {
+            constraint.setCoefficient(child.index.variable, 1);
+        }
+    }
+
+    public void printCostTree(String prefix, QPlan plan){
+        System.out.println(prefix + plan.index.toString() + ":" + plan.index.getRowScanCost());
+        if (plan.children == null) return;
+        for (QPlan child : plan.children) {
+            printCostTree(prefix + "  ", child);
         }
     }
 
@@ -181,10 +210,10 @@ public class Optimizer {
         System.out.println("Optimal objective value = " + solver.objective().value());
 
         for (Index index : allIndices) {
-            System.out.println(index.toString() + " = " + indexVarMap.get(index).solutionValue() +"    " +cost.indexCost(index));
+            System.out.println(index.toString() + " = " + index.variable.solutionValue() + "    ");
         }
         for (UniqueIndex index : uniqueIndices) {
-            System.out.println(index.toString() + " = " + uniqueIndexVarMap.get(index).solutionValue());
+            System.out.println(index.toString() + " = " + index.variable.solutionValue());
         }
     }
 

@@ -19,17 +19,23 @@ type User
 type Todo
 @size(max: 100000)
 @selectivity(fields: [{
+    field: ["title"]
+    distinct: 90000
+  },{
+    field: ["user.username", "priority"]
+    distinct: 200
+  },{
     field: ["user.username", "status"]
-    distinct: 1000
+    distinct: 500
   },{
     field: ["priority"]
-    distinct: 100
+    distinct: 30000
   },{
     field: ["status"]
-    distinct: 2
+    distinct: 50000
   },{
     field: ["user.username"]
-    distinct: 1
+    distinct: 1000
   }
   ]
 )
@@ -60,9 +66,19 @@ type Query
 
 ## Queries must come after all type definitions
 
-
+query GetTodosByCompleted($todo_id: ID)
+@sla(throughput_per_second: 1000, latency_ms: 900, percentile: 99.99)
+{
+  todosByCompleted(todo_id: $todo_id) {
+    title
+    status
+    user {
+      user_id
+    }
+  }
+}
 query GetTodosById($todo_id: ID)
-@sla(throughput_per_second: 1000, latency_ms: 10, percentile: 99.99)
+@sla(throughput_per_second: 100000, latency_ms: 100000, percentile: 99.99)
 {
   todosById(todo_id: $todo_id) {
     title
@@ -70,9 +86,6 @@ query GetTodosById($todo_id: ID)
     user {
       user_id
     }
-  }
-  todosByCompleted(status: $status) {
-    title
   }
 }
 query GetTodosByUser($username: String)
@@ -87,7 +100,7 @@ query GetTodosByUser($username: String)
   }
 }
 query GetTodosByTitle($username: String, $title: title)
-@sla(throughput_per_second: 1, latency_ms: 1000)
+@sla(throughput_per_second: 1, latency_ms: 100000)
 {
   todosByTitle(user_id: $username, title: $title) {
     title
@@ -98,7 +111,7 @@ query GetTodosByTitle($username: String, $title: title)
   }
 }
 query GetUserByID($user_id: ID)
-@sla(throughput_per_second: 10, latency_ms: 10)
+@sla(throughput_per_second: 10, latency_ms: 100000)
  {
   user(user_id: $user_id) {
     title
