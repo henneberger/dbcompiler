@@ -150,13 +150,12 @@ public class Optimizer {
          */
 
         /*
-         * Rerun function to find minimum number of indicies with previous solution as constraint
-         * x1 + x2
+         * Find minimum cluster cost
          */
         MPObjective objective = solver.objective();
         for (Index index : allIndices) {
             objective.setCoefficient(index.variable,
-                    index.getRowScanCost()
+                    index.getRowScanCost() * index.query.sla.throughput_per_second
             );
         }
         objective.setMinimization();

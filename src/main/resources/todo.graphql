@@ -67,7 +67,7 @@ type Query
 ## Queries must come after all type definitions
 
 query GetTodosByCompleted($todo_id: ID)
-@sla(throughput_per_second: 1000, latency_ms: 900, percentile: 99.99)
+@sla(throughput_per_second: 1000, latency_ms: 100000, percentile: 99.99)
 {
   todosByCompleted(todo_id: $todo_id) {
     title
