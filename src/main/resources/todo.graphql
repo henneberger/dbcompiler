@@ -123,6 +123,7 @@ query GetUserByID($user_id: ID)
 }
 
 fragment UpdateStatus on Todo
+   @sla(throughput_per_second: 100, latency_ms: 10, max_tables: 2)
    @update(where: "todo_id = $todo_id")
 {
   status
@@ -130,6 +131,7 @@ fragment UpdateStatus on Todo
 
 
 fragment CreateTodo on Todo
+   @sla(throughput_per_second: 100, latency_ms: 10, max_tables: 2)
    @insert
 {
   title
@@ -139,12 +141,12 @@ fragment CreateTodo on Todo
   }
 }
 
-
 fragment CreateUserWithFirstTodo on User
+   @sla(throughput_per_second: 100, latency_ms: 10, max_tables: 2)
    @insert
 {
   username
-  todo {
+  todos {
     title
     status
   }

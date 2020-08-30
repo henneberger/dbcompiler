@@ -30,6 +30,7 @@ public class LogicalPlan {
                 plans.add(plan);
             }
         }
+
         return new Workload(plans);
     }
 
@@ -41,7 +42,6 @@ public class LogicalPlan {
             return null;
         }
 
-
         Set<FieldPath> sargable = getSargablePredicates(clause);
         List<QPlan> plans = new ArrayList<>();
         Set<List<OrderBy>> clusteringKeys = getClusteringKeys(clause);
@@ -51,20 +51,17 @@ public class LogicalPlan {
                 Set<FieldPath> remaining = new HashSet<>(getAllPredicates(clause));
                 remaining.removeAll(comb);
                 for (List<OrderBy> clusteringKey : clusteringKeys) {
-                    Set<FieldPath> partitionKey = new HashSet<>(comb);
                     //Migrate remaining paths in clustering key to partition key
                     for (OrderBy order : clusteringKey) {
                         if (remaining.contains(order.path)) {
-                            partitionKey.add(order.path);
                             remaining.remove(order.path);
                         } else if (clause.orders.contains(order)) {
-                            partitionKey.add(order.path);
                         } else {
                             break;
                         }
                     }
 
-                    Index index = new Index(rootQuery, comb, clusteringKey, remaining, clause.rootEntity, clause, partitionKey, pageSize);
+                    Index index = new Index(rootQuery, comb, clusteringKey, clause.rootEntity, clause,  pageSize);
                     if (index.getRowScanCost() < rootQuery.sla.latency_ms) {
                         plans.add(new QPlan(index, null));
                     }
@@ -110,7 +107,7 @@ public class LogicalPlan {
         Set<List<OrderBy>> orders = new HashSet<>();
         for (Query query : model.queries) {
             for (Query.QueryDefinitionSelection selection : query.selections) {
-                if (selection.definition.type.entity == rootEntity && selection.definition.sqlClause.orders != null) {
+                if (selection.definition.type.getEntity() == rootEntity && selection.definition.sqlClause.orders != null) {
                     orders.add(selection.definition.sqlClause.orders);
                 }
             }
@@ -178,15 +175,11 @@ public class LogicalPlan {
     public static class Index {
         @EqualsAndHashCode.Exclude
         public final Query query;
-        public final Set<FieldPath> merkle;
-        public final List<OrderBy> bTree;
-        @EqualsAndHashCode.Exclude
-        public final Set<FieldPath> remaining;
+        public final Set<FieldPath> partitionKey;
+        public final List<OrderBy> clusteringKey;
         public final Entity rootEntity;
         @EqualsAndHashCode.Exclude
         public final QueryDefinition.SqlClause sqlClause;
-        @EqualsAndHashCode.Exclude
-        public final Set<FieldPath> primaryKey;
         @EqualsAndHashCode.Exclude
         public final int pageSize;
         @EqualsAndHashCode.Exclude
@@ -195,13 +188,12 @@ public class LogicalPlan {
 
 
         public String toString() {
-            return "i:query:"+query.name+merkle.toString() + "" + bTree.toString();
+            return "i:query:"+query.name+ partitionKey.toString() + "" + clusteringKey.toString();
         }
 
         public double getRowScanCost() {
-
-            double sortCost = calculateSortRowSize(rootEntity, merkle, bTree, sqlClause.orders);
-            double filterCost = calculateFilterRowSize(rootEntity, merkle, bTree, sqlClause.conjunctions);
+            double sortCost = calculateSortRowSize(rootEntity, partitionKey, clusteringKey, sqlClause.orders);
+            double filterCost = calculateFilterRowSize(rootEntity, partitionKey, clusteringKey, sqlClause.conjunctions);
             return Math.max(filterCost * Cost.row_scan_cost,
                     sortCost * Cost.row_scan_cost);
         }

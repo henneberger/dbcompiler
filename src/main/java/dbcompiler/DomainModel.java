@@ -2,14 +2,15 @@ package dbcompiler;
 
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 import java.util.*;
 
 public class DomainModel {
-    protected Map<String, Entity> entities = new HashMap<>();
-    protected Map<String, QueryDefinition> queryDefinitionMap = new HashMap<>();
-    protected List<Query> queries = new ArrayList<>();
-    protected List<Mutation> mutations = new ArrayList<>();
+    public Map<String, Entity> entities = new HashMap<>();
+    public Map<String, QueryDefinition> queryDefinitionMap = new HashMap<>();
+    public List<Query> queries = new ArrayList<>();
+    public List<Mutation> mutations = new ArrayList<>();
 
     /**
      * query Name(arguments)
@@ -88,6 +89,7 @@ public class DomainModel {
         public Map<Set<FieldPath>, Selectivity> selectivityMap;
 
         @AllArgsConstructor
+        @ToString
         public class Field {
             public String name;
             public TypeDef typeDef;
@@ -99,16 +101,36 @@ public class DomainModel {
         }
     }
 
+    @ToString
     public static class Mutation {
         public String name;
+        public MutationSla sla;
+        public Map<String, Selection> selectionSet;
+        @ToString.Exclude
+        public Entity entity;
+        public MutationType mutationType;
+        public List<QueryDefinition.SqlClause.Conjunction> clause;
+
+        @AllArgsConstructor
+        @ToString
+        public class MutationSla {
+            public int max_tables;
+        }
     }
 
     @AllArgsConstructor
+    @ToString
     public static class TypeDef {
         public String typeName;
-        public Entity entity;
+        @ToString.Exclude
+        public DomainModel model;
         public Multiplicity multiplicity;
         public boolean nonnull;
+
+        //Lazy since entity may not be available during parsing
+        public Entity getEntity() {
+            return model.entities.get(typeName);
+        }
 
         public enum Multiplicity {
             SINGLE, LIST
@@ -210,5 +232,19 @@ public class DomainModel {
 
     public static enum Direction {
         DESC, ASC, ANY
+    }
+
+    @ToString
+    public static class SelectionSet {
+        Map<String, Selection> selections;
+    }
+
+    @ToString(callSuper=true)
+    public static class Selection extends SelectionSet {
+        Entity.Field field;
+    }
+
+    public static enum MutationType {
+        INSERT, UPDATE, DELETE
     }
 }

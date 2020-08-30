@@ -80,7 +80,7 @@ public class DomainParser extends GraphQLBaseVisitor {
         QueryDefinition queryDefinition = new QueryDefinition(
                 ctx.name().getText(),
                 typeDef,
-                visitSqlDirective(directives, typeDef.entity));
+                visitSqlDirective(directives, typeDef.getEntity()));
         model.queryDefinitionMap.put(queryDefinition.name, queryDefinition);
         return queryDefinition;
     }
@@ -96,12 +96,13 @@ public class DomainParser extends GraphQLBaseVisitor {
     }
 
     public TypeDef visitNamedType(GraphQLParser.NamedTypeContext ctx, Token token) {
-        return new TypeDef(ctx.name().getText(), model.entities.get(ctx.name().getText()), TypeDef.Multiplicity.SINGLE,
+
+        return new TypeDef(ctx.name().getText(), model, TypeDef.Multiplicity.SINGLE,
                 token != null);
     }
 
     public TypeDef visitListType(GraphQLParser.ListTypeContext ctx, Token token) {
-        return new TypeDef(ctx.type_().namedType().name().getText(), model.entities.get(ctx.type_().namedType().name().getText()),
+        return new TypeDef(ctx.type_().namedType().name().getText(), model,
             TypeDef.Multiplicity.LIST, token != null);
     }
 
@@ -112,6 +113,7 @@ public class DomainParser extends GraphQLBaseVisitor {
         } else if (ctx.operationType().getText().equals("mutation")) {
             //return visitMutation(ctx);
         }
+        System.out.println(ctx.operationType().getText());
         return null;
     }
 
@@ -133,6 +135,11 @@ public class DomainParser extends GraphQLBaseVisitor {
         }
         model.queries.add(query);
         return null;
+    }
+
+    @Override
+    public Object visitExecutableDefinition(GraphQLParser.ExecutableDefinitionContext ctx) {
+        return super.visitExecutableDefinition(ctx);
     }
 
     @Override
@@ -219,8 +226,56 @@ public class DomainParser extends GraphQLBaseVisitor {
     public Object visitFragmentDefinition(GraphQLParser.FragmentDefinitionContext ctx) {
         Mutation mutation = new Mutation();
         mutation.name = ctx.fragmentName().getText();
+        Map<String, Map<String, Object>> directives = visitDirectives(ctx.directives());
+        Preconditions.checkNotNull(directives.get("sla"), "Mutation %s must contain SLA", mutation.name);
+        mutation.sla = mutation.new MutationSla(Integer.parseInt(directives.get("sla").get("max_tables").toString()));
+        String entityName = ctx.typeCondition().namedType().getText();
+        mutation.entity = model.entities.get(entityName);
+        Preconditions.checkNotNull(mutation.entity, "Entity [%s] cannot be found.", entityName);
+        mutation.selectionSet = visitSelectionSet(ctx.selectionSet(), mutation.entity);
+        mutation.mutationType = parseMutationType(directives);
+        if (mutation.mutationType == MutationType.UPDATE) {
+            Preconditions.checkNotNull(directives.get("update").get("where"), "Update statement must contain 'where' directive");
+            mutation.clause = parseConjunctions(directives.get("update"), mutation.entity);
+        }
+
         model.mutations.add(mutation);
         return mutation;
+    }
+
+    private MutationType parseMutationType(Map<String, Map<String, Object>> directives) {
+        if (directives.containsKey("insert")) {
+            return MutationType.INSERT;
+        } else if (directives.containsKey("update")) {
+            return MutationType.UPDATE;
+        } else if (directives.containsKey("delete")) {
+            return MutationType.DELETE;
+        } else {
+            throw new RuntimeException("Mutation missing mutation type directive");
+        }
+    }
+
+    public Map<String, Selection> visitSelectionSet(GraphQLParser.SelectionSetContext ctx, Entity entity) {
+        Map<String, Selection> selectionSet = new LinkedHashMap<>();
+        for (GraphQLParser.SelectionContext s : ctx.selection()) {
+            selectionSet.put(s.field().name().getText(), visitSelection(s, entity));
+        }
+
+        return selectionSet;
+    }
+
+    public Selection visitSelection(GraphQLParser.SelectionContext ctx, Entity entity) {
+        Selection selection = new Selection();
+        String fieldName = ctx.field().name().getText();
+        selection.field = entity.fieldMap.get(fieldName);
+        Preconditions.checkNotNull(selection.field, "Could not find field %s", fieldName);
+        if (ctx.field().selectionSet() != null) {
+            Entity childEntity = selection.field.typeDef.getEntity();
+            Preconditions.checkNotNull(childEntity, "Entity should not be null for %s", fieldName);
+            selection.selections = visitSelectionSet(ctx.field().selectionSet(), childEntity);
+        }
+
+        return selection;
     }
 
     public QueryDefinition.SqlClause visitSqlDirective(Map<String, Map<String, Object>> directives, Entity rootEntity) {
@@ -268,9 +323,10 @@ public class DomainParser extends GraphQLBaseVisitor {
             Entity.Field field = entity.fieldMap.get(fieldRef);
             Preconditions.checkNotNull(field, "Field %s is empty for %s", fieldRef, text);
             fieldPath.add(field);
-            Preconditions.checkState(i < path.length - 1 && field.typeDef.entity != null || ((i + 1) == path.length && field.typeDef.entity == null),
+            Entity typeEntity = field.typeDef.getEntity();
+            Preconditions.checkState(i < path.length - 1 && typeEntity != null || ((i + 1) == path.length && typeEntity == null),
                     "Expression does not end with scalar field: {}", text);
-            entity = field.typeDef.entity;
+            entity = typeEntity;
             lastField = field;
         }
         return new FieldPath(fieldPath, text, rootEntity, lastField.immutable);

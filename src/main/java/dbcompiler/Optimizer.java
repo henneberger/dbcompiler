@@ -1,6 +1,5 @@
 package dbcompiler;
 
-import com.google.ortools.constraintsolver.Solver;
 import com.google.ortools.linearsolver.MPConstraint;
 import com.google.ortools.linearsolver.MPObjective;
 import com.google.ortools.linearsolver.MPSolver;
@@ -31,7 +30,7 @@ public class Optimizer {
         for (Index index : allIndices) {
             UniqueIndex uniqueIndex;
             if ((uniqueIndex = uniqueSetMap.get(index)) == null) {
-                uniqueIndex = new UniqueIndex(index.merkle, index.bTree, index.rootEntity);
+                uniqueIndex = new UniqueIndex(index.partitionKey, index.clusteringKey, index.rootEntity);
                 uniqueSetMap.put(index, uniqueIndex);
                 uniqueIndices.add(uniqueIndex);
             }
@@ -40,10 +39,80 @@ public class Optimizer {
     }
 
 
+    public void findBestPlan() {
+        MPSolver solver = MPSolver.createSolver("Optimizer", "CBC");
+
+        createMutationCostConstraint(solver);
+        createTotalSizeConstraint(solver);
+
+        for (Index index : allIndices) {
+            MPVariable uniqueVariable = index.uniqueIndex.variable;
+            MPVariable indexVariable = solver.makeBoolVar(index.toString());
+
+            MPConstraint constraint = solver.makeConstraint(0, Cost.infinity);
+            constraint.setCoefficient(uniqueVariable, 1);
+            constraint.setCoefficient(indexVariable, -1);
+            index.variable = indexVariable;
+        }
+
+        /*
+         * Assign Path constraints:
+         * e.g.
+         * q1:
+         *  x1
+         *  x2:
+         *    x3
+         * q1:
+         *  x1
+         *  x2
+         *
+         * result:
+         *   x1q1 + x2q1 >= 1, x2q1 <= x3q1
+         *   x1q2 + x2q2 >= 1
+         */
+        for (LogicalPlan.QueryPlan queryPlan : workload.plans) {
+            setPathConstraintsForIndex(solver, queryPlan.plans);
+        }
+
+        /*
+         * Set solution as total cost
+         * prev_solution <= freq * cost * x1q1, ...
+         */
+
+        /*
+         * Find minimum cluster cost
+         */
+        MPObjective objective = solver.objective();
+        for (Index index : allIndices) {
+            objective.setCoefficient(index.variable,
+                    index.getRowScanCost() * index.query.sla.throughput_per_second
+            );
+        }
+        objective.setMinimization();
+
+        solveAndPrint(solver);
+    }
+
+    private void createTotalSizeConstraint(MPSolver solver) {
+        //Total size constraint:
+        // For each unique index, estimate size
+        // 0 <= size_estimate_x1 * x1 + size_estimate_x2 * x2 + ... <= max_size
+    }
+
+    private void createMutationCostConstraint(MPSolver solver) {
+        //For each mutation in workload
+        //Get all unique indexes that satisfy the workload
+        //1 <= x1 + x2 + ... <= max_cost
+        // e.g.
+        // x1: todo + user
+        // x2: todo
+        // x3: user
+    }
+
     /**
      * Find the minimum number of tables followed by the minimum cost
      */
-    public int optimize() {
+    public int solveMinTables() {
         MPSolver solver = MPSolver.createSolver("Optimizer", "CBC");
         for (LogicalPlan.QueryPlan plan : workload.plans) {
             System.out.println(plan.query.selections);
@@ -217,20 +286,18 @@ public class Optimizer {
     }
 
     public static class UniqueIndex {
-        private final Set<FieldPath> merkle;
-        private final List<OrderBy> bTree;
-        private final Entity rootEntity;
+        private final Set<FieldPath> partitionKey;
+        private final List<OrderBy> clusteringKey;
         public MPVariable variable;
 
-        public UniqueIndex(Set<FieldPath> merkle, List<OrderBy> bTree, Entity rootEntity) {
-            this.merkle = merkle;
-            this.bTree = bTree;
-            this.rootEntity = rootEntity;
+        public UniqueIndex(Set<FieldPath> partitionKey, List<OrderBy> clusteringKey, Entity rootEntity) {
+            this.partitionKey = partitionKey;
+            this.clusteringKey = clusteringKey;
         }
 
         @Override
         public String toString() {
-            return "u"+ merkle + bTree;
+            return "u"+ partitionKey + clusteringKey;
         }
     }
 }
