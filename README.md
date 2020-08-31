@@ -3,7 +3,7 @@
 This nosql optimizer will find the best physical table structure(s) to minimize the global cost of a given workload.
 
 ## How to use
-See [todo.graphql](src/resources/todo.graphql) for an example workload.
+See [todo.graphql](src/main/resources/todo.graphql) for an example workload.
 
 Selectivity needs to be manually specified for each eligible permutation. Each selectivity set needs to know:
  - `distinct` number of elements that would be returned if used
