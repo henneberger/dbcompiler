@@ -32,6 +32,7 @@ import static dbcompiler.DomainModel.Direction.*;
 
 public class LogicalPlan {
     private final DomainModel model;
+    public static double row_scan_cost = 1.000;
 
     public LogicalPlan(DomainModel model) {
         this.model = model;
@@ -225,8 +226,8 @@ public class LogicalPlan {
         public double getRowScanCost() {
             double sortCost = calculateSortRowSize(rootEntity, partitionKey, clusteringKey, sqlClause.orders);
             double filterCost = calculateFilterRowSize(rootEntity, partitionKey, clusteringKey, sqlClause);
-            return Math.max(filterCost * Cost.row_scan_cost,
-                    sortCost * Cost.row_scan_cost);
+            return Math.max(filterCost * row_scan_cost,
+                    sortCost * row_scan_cost);
         }
 
         private double calculateFilterRowSize(Entity entity, Set<FieldPath> partition, List<OrderBy> cluster, QueryDefinition.SqlClause clause) {

@@ -37,6 +37,7 @@ public class Optimizer {
     private final DomainModel model;
 
     private Set<UniqueIndex> uniqueIndices;
+    public static double infinity = java.lang.Double.POSITIVE_INFINITY;
 
     public Optimizer(LogicalPlan.Workload workload, DomainModel model) {
         this.workload = workload;
@@ -90,7 +91,7 @@ public class Optimizer {
          * Associate unique index with query index: x1 >= x1q1
          */
         for (Index index : allIndices) {
-            MPConstraint constraint = solver.makeConstraint(0, Cost.infinity);
+            MPConstraint constraint = solver.makeConstraint(0, infinity);
             constraint.setCoefficient(index.uniqueIndex.variable, 1);
             constraint.setCoefficient(index.variable, -1);
         }
@@ -158,7 +159,7 @@ public class Optimizer {
 
     public void setPathConstraintsForIndex(MPSolver solver, List<QPlan> plan) {
         //1 <= x1q2 + x2q2 <= inf
-        MPConstraint constraint = solver.makeConstraint(1, Cost.infinity);
+        MPConstraint constraint = solver.makeConstraint(1, infinity);
         for (QPlan child : plan) {
             constraint.setCoefficient(child.index.variable, 1);
         }
