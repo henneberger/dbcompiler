@@ -47,6 +47,7 @@ public class DomainModel {
         public class QueryDefinitionSelection extends QuerySelection {
             public QueryDefinition definition;
             public int pageSize = 10;
+            public Map<String, Selection> selections;
 
             public Query getQuery() {
                 return Query.this;
@@ -63,7 +64,6 @@ public class DomainModel {
          */
         public class QuerySelection {
             public Entity.Field field;
-            public List<QuerySelection> selections;
 
             /**
              * A query selection's variable.

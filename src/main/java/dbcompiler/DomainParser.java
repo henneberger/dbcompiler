@@ -213,6 +213,10 @@ public class DomainParser extends GraphQLBaseVisitor {
             queryDefinitionSelection.definition = model.queryDefinitionMap.get(sel.field().name().getText());
             Preconditions.checkNotNull(queryDefinitionSelection.definition, "dbcompiler.Query definition was not defined {}", sel.field().name().getText());
             queryDefinitionSelections.add(queryDefinitionSelection);
+            if (sel.field().selectionSet() != null) {
+                queryDefinitionSelection.selections = visitSelectionSet(sel.field().selectionSet(), queryDefinitionSelection.definition.type.getEntity());
+            }
+
         }
         return queryDefinitionSelections;
     }
@@ -235,9 +239,13 @@ public class DomainParser extends GraphQLBaseVisitor {
         Preconditions.checkNotNull(mutation.entity, "Entity [%s] cannot be found.", entityName);
         mutation.selectionSet = visitSelectionSet(ctx.selectionSet(), mutation.entity);
         mutation.mutationType = parseMutationType(directives);
+
         if (mutation.mutationType == MutationType.UPDATE) {
             Preconditions.checkNotNull(directives.get("update").get("where"), "Update statement must contain 'where' directive");
             mutation.clause = parseConjunctions(directives.get("update"), mutation.entity);
+        } else if (mutation.mutationType == MutationType.DELETE) {
+            Preconditions.checkNotNull(directives.get("delete").get("where"), "Update statement must contain 'where' directive");
+            mutation.clause = parseConjunctions(directives.get("delete"), mutation.entity);
         }
 
         model.mutations.add(mutation);
