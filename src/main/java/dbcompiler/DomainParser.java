@@ -229,6 +229,7 @@ public class DomainParser extends GraphQLBaseVisitor {
         Map<String, Map<String, Object>> directives = visitDirectives(ctx.directives());
         Preconditions.checkNotNull(directives.get("sla"), "Mutation %s must contain SLA", mutation.name);
         mutation.sla = mutation.new MutationSla(Integer.parseInt(directives.get("sla").get("max_tables").toString()));
+        Preconditions.checkState(mutation.sla.max_tables > 0, "Max tables must be a positive integer %s", mutation.name);
         String entityName = ctx.typeCondition().namedType().getText();
         mutation.entity = model.entities.get(entityName);
         Preconditions.checkNotNull(mutation.entity, "Entity [%s] cannot be found.", entityName);
@@ -308,7 +309,12 @@ public class DomainParser extends GraphQLBaseVisitor {
         List<QueryDefinition.SqlClause.Conjunction> conjunctions = new ArrayList<>();
         for (String part : clause) {
             String[] p = part.split(" = ");
-            conjunctions.add(new QueryDefinition.SqlClause.Conjunction(parseFieldPath(p[0], rootEntity), p[1]));
+            FieldPath fieldPath = parseFieldPath(p[0], rootEntity);
+            if (fieldPath.fields.size() > 1 && !LogicalPlan.isSargable(fieldPath)) {
+                //todo: This could be loosened to include denormalizable fields
+                throw new RuntimeException(String.format("Only immutable scalars on relationships can be used on conjunction %s. %s is invalid.", where, p[0]));
+            }
+            conjunctions.add(new QueryDefinition.SqlClause.Conjunction(fieldPath, p[1]));
         }
         return conjunctions;
     }

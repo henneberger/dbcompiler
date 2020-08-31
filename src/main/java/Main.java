@@ -14,8 +14,7 @@ public class Main {
                     Charset.defaultCharset()));
 
         LogicalPlan.Workload workload = new LogicalPlan(model).search();
-        System.out.println(model.mutations);
-        Optimizer optimizer = new Optimizer(workload);
+        Optimizer optimizer = new Optimizer(workload, model);
         optimizer.findBestPlan();
     }
 

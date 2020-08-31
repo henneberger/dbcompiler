@@ -1,5 +1,6 @@
 package dbcompiler;
 
+import com.google.common.collect.ArrayListMultimap;
 import com.google.ortools.linearsolver.MPConstraint;
 import com.google.ortools.linearsolver.MPObjective;
 import com.google.ortools.linearsolver.MPSolver;
@@ -17,12 +18,14 @@ public class Optimizer {
     private LogicalPlan.Workload workload;
 
     private List<Index> allIndices;
+    private final DomainModel model;
 
     private Set<UniqueIndex> uniqueIndices;
 
-    public Optimizer(LogicalPlan.Workload workload) {
+    public Optimizer(LogicalPlan.Workload workload, DomainModel model) {
         this.workload = workload;
         this.allIndices = WorkloadUtil.getAllIndicies(workload.plans);
+        this.model = model;
         this.uniqueIndices = new HashSet<>();
 
         //todo: this is incorrect, fix this soon
@@ -38,22 +41,37 @@ public class Optimizer {
         }
     }
 
+    public void printPlan() {
+        for (LogicalPlan.QueryPlan plan : workload.plans) {
+            System.out.println(plan.query.selections);
+            for (QPlan qplan : plan.plans) {
+                printCostTree("  ", qplan);
+            }
+        }
+    }
+
 
     public void findBestPlan() {
         MPSolver solver = MPSolver.createSolver("Optimizer", "CBC");
+        printPlan();
+
+        for (UniqueIndex index : uniqueIndices) {
+            index.variable = solver.makeBoolVar("u" + index.toString());
+        }
+
+        for (Index index : allIndices) {
+            index.variable = solver.makeBoolVar(index.toString());
+        }
+
+        //Associate unique with index var
+        for (Index index : allIndices) {
+            MPConstraint constraint = solver.makeConstraint(0, Cost.infinity);
+            constraint.setCoefficient(index.uniqueIndex.variable, 1);
+            constraint.setCoefficient(index.variable, -1);
+        }
 
         createMutationCostConstraint(solver);
         createTotalSizeConstraint(solver);
-
-        for (Index index : allIndices) {
-            MPVariable uniqueVariable = index.uniqueIndex.variable;
-            MPVariable indexVariable = solver.makeBoolVar(index.toString());
-
-            MPConstraint constraint = solver.makeConstraint(0, Cost.infinity);
-            constraint.setCoefficient(uniqueVariable, 1);
-            constraint.setCoefficient(indexVariable, -1);
-            index.variable = indexVariable;
-        }
 
         /*
          * Assign Path constraints:
@@ -73,11 +91,6 @@ public class Optimizer {
         for (LogicalPlan.QueryPlan queryPlan : workload.plans) {
             setPathConstraintsForIndex(solver, queryPlan.plans);
         }
-
-        /*
-         * Set solution as total cost
-         * prev_solution <= freq * cost * x1q1, ...
-         */
 
         /*
          * Find minimum cluster cost
@@ -107,6 +120,23 @@ public class Optimizer {
         // x1: todo + user
         // x2: todo
         // x3: user
+
+        //Only do first entity for now.. Need better graph queries to represent this stuff
+        ArrayListMultimap<Entity, UniqueIndex> entityMap = ArrayListMultimap.create();
+        for (UniqueIndex index : uniqueIndices) {
+            entityMap.put(index.rootEntity, index);
+        }
+
+        for (Mutation mutation : model.mutations) {
+            if (mutation.mutationType != MutationType.INSERT) continue;
+            List<UniqueIndex> uniqueIndices = entityMap.get(mutation.entity);
+            if (uniqueIndices.size() > 0) { //todo fix
+                MPConstraint constraint = solver.makeConstraint(1, mutation.sla.max_tables, mutation.name + "_max_tables");
+                for (UniqueIndex index : uniqueIndices) {
+                    constraint.setCoefficient(index.variable, 1);
+                }
+            }
+        }
     }
 
     /**
@@ -114,12 +144,7 @@ public class Optimizer {
      */
     public int solveMinTables() {
         MPSolver solver = MPSolver.createSolver("Optimizer", "CBC");
-        for (LogicalPlan.QueryPlan plan : workload.plans) {
-            System.out.println(plan.query.selections);
-            for (QPlan qplan : plan.plans) {
-                printCostTree("  ", qplan);
-            }
-        }
+
 
         /*
          * Generate index variables: x1, x2, x3, ...
@@ -288,11 +313,13 @@ public class Optimizer {
     public static class UniqueIndex {
         private final Set<FieldPath> partitionKey;
         private final List<OrderBy> clusteringKey;
+        private final Entity rootEntity;
         public MPVariable variable;
 
         public UniqueIndex(Set<FieldPath> partitionKey, List<OrderBy> clusteringKey, Entity rootEntity) {
             this.partitionKey = partitionKey;
             this.clusteringKey = clusteringKey;
+            this.rootEntity = rootEntity;
         }
 
         @Override

@@ -39,27 +39,18 @@ public class LogicalPlan {
          * Queries with a generated ID on its root path can always be found with a direct lookup
          */
         if (hasRootId(clause)) {
+            //todo: has a filter cost if is list
             return null;
         }
 
         Set<FieldPath> sargable = getSargablePredicates(clause);
         List<QPlan> plans = new ArrayList<>();
-        Set<List<OrderBy>> clusteringKeys = getClusteringKeys(clause);
+        Set<List<OrderBy>> sargableClusteringKeys = getSargableClusteringKeys(clause);
 
         for (int i = 1; i <= sargable.size(); i++) {
             for (Set<FieldPath> comb : Sets.combinations(sargable, i)) {
-                Set<FieldPath> remaining = new HashSet<>(getAllPredicates(clause));
-                remaining.removeAll(comb);
-                for (List<OrderBy> clusteringKey : clusteringKeys) {
-                    //Migrate remaining paths in clustering key to partition key
-                    for (OrderBy order : clusteringKey) {
-                        if (remaining.contains(order.path)) {
-                            remaining.remove(order.path);
-                        } else if (clause.orders.contains(order)) {
-                        } else {
-                            break;
-                        }
-                    }
+                for (List<OrderBy> clusteringKey : sargableClusteringKeys) {
+                    //Not all conjunctions can be fulfilled with sargable keys
 
                     Index index = new Index(rootQuery, comb, clusteringKey, clause.rootEntity, clause,  pageSize);
                     if (index.getRowScanCost() < rootQuery.sla.latency_ms) {
@@ -72,17 +63,33 @@ public class LogicalPlan {
         return plans;
     }
 
+    public static Set<FieldPath> getPrimaryKey(Set<FieldPath> comb, List<OrderBy> clusteringKey, QueryDefinition.SqlClause clause) {
+        Set<FieldPath> paths = clause.conjunctions.stream().map(e->e.fieldPath).collect(Collectors.toSet());
+        for (FieldPath m : comb) {
+            paths.remove(m);
+        }
+
+        for (OrderBy orderBy : clusteringKey) {
+            if (paths.contains(orderBy.path)) {
+                paths.remove(orderBy.path);
+            } else {
+                break;
+            }
+        }
+        return paths;
+    }
+
     /**
      * Clustering keys are ordered and cannot contain non-sargable fields.
      *  Each permutation: [1, id], [1, 2, id], [1, 2, 3, id], ...
      */
-    private Set<List<OrderBy>> getClusteringKeys(QueryDefinition.SqlClause clause) {
+    private Set<List<OrderBy>> getSargableClusteringKeys(QueryDefinition.SqlClause clause) {
         Set<List<OrderBy>> comb = new HashSet<>();
         Set<List<OrderBy>> orders = getOrderByForCluster(clause.rootEntity);
         for (List<OrderBy> order : orders) {
             List<OrderBy> options = new ArrayList<>();
             for (OrderBy o : order) {
-                if (!o.path.isSargable()) break;
+                if (!isSargable(o.path)) break;
                 options.add(o);
                 List<OrderBy> option = new ArrayList<>(options);
 
@@ -146,16 +153,24 @@ public class LogicalPlan {
     }
 
     public Set<FieldPath> getSargablePredicates(QueryDefinition.SqlClause clause) {
-        return clause.conjunctions.stream()
+        Set<FieldPath> fieldPaths = clause.conjunctions.stream()
                 .map(e->e.fieldPath)
-                .filter(FieldPath::isSargable)
+                .filter(LogicalPlan::isSargable)
                 .collect(Collectors.toSet());
+
+        return fieldPaths;
     }
 
-    public Set<FieldPath> getAllPredicates(QueryDefinition.SqlClause clause) {
-        return clause.conjunctions.stream()
-                .map(e->e.fieldPath)
-                .collect(Collectors.toSet());
+    public static boolean isSargable(FieldPath e) {
+        for (Entity.Field field : e.fields) {
+            if (field.typeDef.getEntity() == null) {
+                return field.typeDef.nonnull;
+            } else if (!field.typeDef.nonnull){
+                return false;
+            }
+        }
+
+        return false;
     }
 
     @AllArgsConstructor
@@ -187,36 +202,29 @@ public class LogicalPlan {
         public MPVariable variable;
 
 
+
         public String toString() {
             return "i:query:"+query.name+ partitionKey.toString() + "" + clusteringKey.toString();
         }
 
         public double getRowScanCost() {
             double sortCost = calculateSortRowSize(rootEntity, partitionKey, clusteringKey, sqlClause.orders);
-            double filterCost = calculateFilterRowSize(rootEntity, partitionKey, clusteringKey, sqlClause.conjunctions);
+            double filterCost = calculateFilterRowSize(rootEntity, partitionKey, clusteringKey, sqlClause);
             return Math.max(filterCost * Cost.row_scan_cost,
                     sortCost * Cost.row_scan_cost);
         }
 
-        private double calculateFilterRowSize(Entity entity, Set<FieldPath> merkle, List<OrderBy> bTree, List<QueryDefinition.SqlClause.Conjunction> conjunctions) {
-            Set<FieldPath> paths = conjunctions.stream().map(e->e.fieldPath).collect(Collectors.toSet());
-            for (FieldPath m : merkle) {
-                paths.remove(m);
-            }
-
-            for (OrderBy orderBy : bTree) {
-                if (paths.contains(orderBy.path)) {
-                    paths.remove(orderBy.path);
-                } else {
-                    break;
-                }
-            }
+        private double calculateFilterRowSize(Entity entity, Set<FieldPath> merkle, List<OrderBy> bTree, QueryDefinition.SqlClause clause) {
+            Set<FieldPath> paths = getPrimaryKey(merkle, bTree, clause);
 
             if (paths.isEmpty()) {
                 return 1;
             } else {
                 Selectivity selectivity = entity.selectivityMap.get(paths);
                 Preconditions.checkNotNull(selectivity, "Selectivity needed for %s", paths);
+
+                //Row scan cost and then query cost
+                //This can get a bit complicated for scalars we can't denormalize
 
                 return Math.min(selectivity.distinct, (int)1.645 * (pageSize / (1d / 2/*boolean*/)));
             }

@@ -9,11 +9,11 @@ type User
   }]
 )
 {
-  user_id: ID
-  username: String
+  user_id: ID!
+  username: String!
   active: boolean @mutable
   age: int
-  todos: [Todo] @inverse(field: "user") @multiplicity(max: 1000)
+  todos: [Todo] @inverse(field: "user") @multiplicity(max: 1000) #Inverse rule: if to-one is required, so is the to-many
 }
 
 type Todo
@@ -40,13 +40,13 @@ type Todo
   ]
 )
 {
-  todo_id: ID
+  todo_id: ID!
   title: String
     @mutable
   status: boolean
     @mutable
   #example order by fields
-  priority: int
+  priority: int!
 
   user: User! @inverse(field: "todos")
 }
