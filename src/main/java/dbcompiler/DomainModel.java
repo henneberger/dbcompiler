@@ -95,7 +95,7 @@ public class DomainModel {
     /**
      * type Name
      *   \@size(max: 10000) {
-     *     field: field \@selectivity(max: 1000)
+     *     field: field
      * }
      */
     public static class Entity {
@@ -218,20 +218,9 @@ public class DomainModel {
      */
     public static class Selectivity {
         public int distinct = 0;
-        public Distribution distribution;
         public Set<FieldPath> fields;
-    }
-
-    public static interface Distribution {
-        public double calculateExpected(int needed_items, int distinct);
-    }
-    public static class BinomialDistribution implements Distribution {
-
-        @Override
-        public double calculateExpected(int needed_items, int distinct) {
-            //todo: Actual calculation for expected search
-            return (double) (1.645 * (needed_items / (1d / distinct)));
-        }
+        public boolean hotspot;
+        public double prob;
     }
 
     @AllArgsConstructor

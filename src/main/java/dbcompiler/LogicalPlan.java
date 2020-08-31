@@ -55,7 +55,6 @@ public class LogicalPlan {
          * Queries with a generated ID on its root path can always be found with a direct lookup
          */
         if (hasRootId(clause)) {
-            //todo: has a filter cost if is list
             return null;
         }
 
@@ -65,9 +64,10 @@ public class LogicalPlan {
 
         for (int i = 1; i <= sargable.size(); i++) {
             for (Set<FieldPath> comb : Sets.combinations(sargable, i)) {
+                if (clause.rootEntity.selectivityMap.containsKey(comb) && clause.rootEntity.selectivityMap.get(comb).hotspot) { //avoid hotspot
+                    continue;
+                }
                 for (List<OrderBy> clusteringKey : sargableClusteringKeys) {
-                    //Not all conjunctions can be fulfilled with sargable keys
-
                     Index index = new Index(rootQuery, comb, clusteringKey, clause.rootEntity, clause,  pageSize);
                     if (index.getRowScanCost() < rootQuery.sla.latency_ms) {
                         plans.add(new QPlan(index, null));
@@ -79,7 +79,7 @@ public class LogicalPlan {
         return plans;
     }
 
-    public static Set<FieldPath> getPrimaryKey(Set<FieldPath> comb, List<OrderBy> clusteringKey, QueryDefinition.SqlClause clause) {
+    public static Set<FieldPath> getRemainingScalars(Set<FieldPath> comb, List<OrderBy> clusteringKey, QueryDefinition.SqlClause clause) {
         Set<FieldPath> paths = clause.conjunctions.stream().map(e->e.fieldPath).collect(Collectors.toSet());
         for (FieldPath m : comb) {
             paths.remove(m);
@@ -158,10 +158,9 @@ public class LogicalPlan {
         return fieldPath;
     }
 
-    //todo: query rewriting may have an issue with this
     private boolean hasRootId(QueryDefinition.SqlClause clause) {
         for (QueryDefinition.SqlClause.Conjunction conjunction : clause.conjunctions) {
-            if (conjunction.fieldPath.fields.get(0).typeDef.typeName.equals("ID")) {
+            if (conjunction.fieldPath.fields.get(0).name.equals("_id")) {
                 return true;
             }
         }
@@ -230,34 +229,31 @@ public class LogicalPlan {
                     sortCost * Cost.row_scan_cost);
         }
 
-        private double calculateFilterRowSize(Entity entity, Set<FieldPath> merkle, List<OrderBy> bTree, QueryDefinition.SqlClause clause) {
-            Set<FieldPath> paths = getPrimaryKey(merkle, bTree, clause);
+        private double calculateFilterRowSize(Entity entity, Set<FieldPath> partition, List<OrderBy> cluster, QueryDefinition.SqlClause clause) {
+            Set<FieldPath> remainingScalars = getRemainingScalars(partition, cluster, clause);
 
-            if (paths.isEmpty()) {
+            if (remainingScalars.isEmpty()) {
                 return 1;
             } else {
-                Selectivity selectivity = entity.selectivityMap.get(paths);
-                Preconditions.checkNotNull(selectivity, "Selectivity needed for %s", paths);
+                Selectivity selectivity = entity.selectivityMap.get(remainingScalars);
+                Preconditions.checkNotNull(selectivity, "Selectivity needed for %s", remainingScalars);
 
-                //Row scan cost and then query cost
-                //This can get a bit complicated for scalars we can't denormalize
-
-                return Math.min(selectivity.distinct, (int)1.645 * (pageSize / (1d / 2/*boolean*/)));
+                return Math.min(selectivity.distinct, (int)(1.645 * (pageSize / selectivity.prob)));
             }
         }
 
-        private double calculateSortRowSize(Entity entity, Set<FieldPath> merkle, List<OrderBy> bTree, List<OrderBy> orders) {
+        private double calculateSortRowSize(Entity entity, Set<FieldPath> partition, List<OrderBy> cluster, List<OrderBy> orders) {
             if (orders.isEmpty()) return 0;
-            Set<FieldPath> all = new HashSet<>(merkle);
+            Set<FieldPath> all = new HashSet<>(partition);
             int idx = -2;
-            for (int i = 0; i < bTree.size() && i < orders.size(); i++) { //b-tree always has the last element as ID
-                OrderBy bTreeOrder = bTree.get(i);
+            for (int i = 0; i < cluster.size() && i < orders.size(); i++) { //b-tree always has the last element as ID
+                OrderBy clusterOrder = cluster.get(i);
                 OrderBy order = orders.get(i);
-                if (!bTreeOrder.equals(order)) {
+                if (!clusterOrder.equals(order)) {
                     break;
                 }
                 idx = i;
-                all.add(bTreeOrder.path);
+                all.add(clusterOrder.path);
             }
 
             if ((idx + 1)== orders.size()) {

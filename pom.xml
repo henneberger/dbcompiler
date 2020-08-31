@@ -24,18 +24,14 @@
             <version>29.0-jre</version>
         </dependency>
         <dependency>
-            <groupId>com.google</groupId>
+            <groupId>com.google.or-tools</groupId>
             <artifactId>or-tools</artifactId>
             <version>7.8</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/lib/com.google.ortools.jar</systemPath>
         </dependency>
         <dependency>
-            <groupId>com.google</groupId>
-            <artifactId>protobuf</artifactId>
-            <version>x</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/lib/protobuf.jar</systemPath>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>3.13.0</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -71,7 +67,6 @@
                     <target>8</target>
                 </configuration>
             </plugin>
-
         </plugins>
     </build>
 

@@ -1,75 +1,53 @@
 type User
 @size(max: 10000)
-@selectivity(fields: [{
-    field: ["age"]
-    distinct: 120
-  },{
-    field: ["username"]
-    distinct: 10000
-  }]
-)
 {
   user_id: ID!
   username: String!
   active: boolean @mutable
   age: int
-  todos: [Todo] @inverse(field: "user") @multiplicity(max: 1000) #Inverse rule: if to-one is required, so is the to-many
+  todos: [Todo] @relation(field: "user") @multiplicity(max: 1000)
 }
 
 type Todo
 @size(max: 100000)
 @selectivity(fields: [{
-    field: ["title"]
-    distinct: 90000
-  },{
-    field: ["user.username", "priority"]
-    distinct: 200
-  },{
-    field: ["user.username", "status"]
-    distinct: 500
-  },{
-    field: ["priority"]
-    distinct: 30000
-  },{
     field: ["status"]
     distinct: 50000
+    hotspot: true
+    prob: 0.5
   },{
     field: ["user.username"]
     distinct: 1000
+    prob: 0.001
   }
   ]
 )
 {
-  todo_id: ID!
   title: String
     @mutable
   status: boolean
     @mutable
-  #example order by fields
   priority: int!
 
-  user: User! @inverse(field: "todos")
+  user: User! @relation(field: "todos")
 }
 
-## Query & Mutation type must be after entity type
-# Order: By INT, Date, Alphabetically, Your own order (factors: attributes w/ levels)
-# Only order if result set is small or immutable
 type Query
 {
-  #todo: no-directive does not parse.
-  todosById: Todo @sql(where: "todo_id = $todo_id")
-  todosByUser: [Todo] @sql(where: "user.username = $username", order: [{field: "todo_id", direction:"DESC"}])
-  todosByTitle: [Todo] @sql(where: "user.username = $username AND title = $title", order: [{field: "priority", direction:"DESC"}, {field: "status", direction:"DESC"}])
-  todosByCompleted: [Todo] @sql(where: "user.username = $username AND status = $status", order: [{field: "priority", direction:"DESC"}])
-  user: [User] @sql(where: "user_id = $user_id")
+  todosById: Todo @sql(where: "_id = $id")
+  todosByUser: [Todo]
+    @sql(where: "user.username = $username",
+         order: [{field: "_id", direction:"DESC"}])
+  todosByCompleted: [Todo]
+    @sql(where: "user.username = $username AND status = $status",
+         order: [{field: "priority", direction:"DESC"}])
 }
 
 ## Queries must come after all type definitions
-
 query GetTodosByCompleted($todo_id: ID)
-@sla(throughput_per_second: 1000, latency_ms: 100000, percentile: 99.99)
+@sla(throughput_per_second: 1000, latency_ms: 100)
 {
-  todosByCompleted(todo_id: $todo_id) {
+  todosByCompleted(_id: $todo_id) {
     title
     status
     user {
@@ -77,84 +55,44 @@ query GetTodosByCompleted($todo_id: ID)
     }
   }
 }
+
 query GetTodosById($todo_id: ID)
-@sla(throughput_per_second: 100000, latency_ms: 100000, percentile: 99.99)
+@sla(throughput_per_second: 1000, latency_ms: 100)
 {
-  todosById(todo_id: $todo_id) {
+  todosById(_id: $todo_id) {
     title
     status
     user {
-      user_id
+      _id
     }
   }
 }
+
 query GetTodosByUser($username: String)
-@sla(throughput_per_second: 100, latency_ms: 50)
+@sla(throughput_per_second: 1, latency_ms: 2000)
 {
-  todosByUser(user_id: $user_id) {
+  todosByUser(_id: $user_id) {
     title
     status
     user {
-      user_id
-    }
-  }
-}
-query GetTodosByTitle($username: String, $title: title)
-@sla(throughput_per_second: 1, latency_ms: 100000)
-{
-  todosByTitle(user_id: $username, title: $title) {
-    title
-    status
-    user {
-      user_id
-    }
-  }
-}
-query GetUserByID($user_id: ID)
-@sla(throughput_per_second: 10, latency_ms: 100000)
- {
-  user(user_id: $user_id) {
-    username
-    age
-    todos {
-      title
-      status
+      _id
     }
   }
 }
 
 fragment UpdateStatus on Todo
-   @sla(throughput_per_second: 100, latency_ms: 10, max_tables: 2)
-   @update(where: "todo_id = $todo_id")
+   @update(where: "_id = $todo_id")
 {
   status
 }
 
-fragment UpdateStatus on Todo
-   @sla(throughput_per_second: 100, latency_ms: 10, max_tables: 2)
-   @delete(where: "todo_id = $todo_id")
-{
-  todo_id
-}
-
 fragment CreateTodo on Todo
-   @sla(throughput_per_second: 100, latency_ms: 10, max_tables: 2)
+   @sla(max_tables: 1)
    @insert
 {
   title
   status
   user {
-    user_id
-  }
-}
-
-fragment CreateUserWithFirstTodo on User
-   @sla(throughput_per_second: 100, latency_ms: 10, max_tables: 2)
-   @insert
-{
-  username
-  todos {
-    title
-    status
+    _id
   }
 }

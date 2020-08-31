@@ -45,11 +45,20 @@ public class DomainParser extends GraphQLBaseVisitor {
                 .stream()
                 .map(f -> visitFieldDefinition(f, entity))
                 .collect(Collectors.toMap(e->e.name, e->e));
+        entity.fieldMap.put("_id", createIDField(entity));
         entity.size = entity.new EntitySizeDirective();
         entity.size.max = Integer.parseInt(directives.get("size").get("max").toString());
-        entity.selectivityMap = parseSelectivityMap((List<Map<String, Object>>)directives.get("selectivity").get("fields"), entity);
+        if (directives.containsKey("selectivity")) {
+            entity.selectivityMap = parseSelectivityMap((List<Map<String, Object>>) directives.get("selectivity").get("fields"), entity);
+        } else {
+            entity.selectivityMap = ImmutableMap.of();
+        }
         model.entities.put(entity.entityName, entity);
         return entity;
+    }
+
+    private Entity.Field createIDField(Entity entity) {
+        return entity.new Field("_id", new TypeDef("ID", model, TypeDef.Multiplicity.SINGLE, true), true);
     }
 
     private Map<Set<FieldPath>, Selectivity> parseSelectivityMap(List<Map<String, Object>> fields, Entity entity) {
@@ -78,15 +87,13 @@ public class DomainParser extends GraphQLBaseVisitor {
                 .collect(Collectors.toSet());
 
         Preconditions.checkNotNull(directive.get("distinct"), "Selectivity must have distinct");
-//        Preconditions.checkNotNull(directive.get("distribution"), "Selectivity must have distribution");
         selectivity.distinct = Integer.parseInt(directive.get("distinct").toString());
-        selectivity.distribution = parseDistribution((Map<String, Object>)directive.get("distribution"));
+        selectivity.prob = Double.parseDouble(directive.get("prob").toString());
+        if (directive.containsKey("hotspot")) {
+            selectivity.hotspot = Boolean.parseBoolean(directive.get("hotspot").toString());
+        }
         selectivity.fields = fields;
         return selectivity;
-    }
-
-    private Distribution parseDistribution(Map<String, Object> directive) {
-        return new BinomialDistribution();
     }
 
     @Override
@@ -247,9 +254,11 @@ public class DomainParser extends GraphQLBaseVisitor {
         Mutation mutation = new Mutation();
         mutation.name = ctx.fragmentName().getText();
         Map<String, Map<String, Object>> directives = visitDirectives(ctx.directives());
-        Preconditions.checkNotNull(directives.get("sla"), "Mutation %s must contain SLA", mutation.name);
-        mutation.sla = mutation.new MutationSla(Integer.parseInt(directives.get("sla").get("max_tables").toString()));
-        Preconditions.checkState(mutation.sla.max_tables > 0, "Max tables must be a positive integer %s", mutation.name);
+        if (directives.containsKey("sla")) {
+            Preconditions.checkNotNull(directives.get("sla"), "Mutation %s must contain SLA", mutation.name);
+            mutation.sla = mutation.new MutationSla(Integer.parseInt(directives.get("sla").get("max_tables").toString()));
+            Preconditions.checkState(mutation.sla.max_tables > 0, "Max tables must be a positive integer %s", mutation.name);
+        }
         String entityName = ctx.typeCondition().namedType().getText();
         mutation.entity = model.entities.get(entityName);
         Preconditions.checkNotNull(mutation.entity, "Entity [%s] cannot be found.", entityName);
