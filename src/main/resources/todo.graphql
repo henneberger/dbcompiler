@@ -1,7 +1,6 @@
 type User
 @size(max: 10000)
 {
-  user_id: ID!
   username: String!
   active: boolean @mutable
   age: int
@@ -51,7 +50,7 @@ query GetTodosByCompleted($todo_id: ID)
     title
     status
     user {
-      user_id
+      _id
     }
   }
 }
